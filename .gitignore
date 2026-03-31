@@ -1,4 +1,4 @@
-# Python-generated files
+﻿# Python-generated files
 __pycache__/
 *.py[oc]
 build/
@@ -18,3 +18,7 @@ uploads/
 # Local temp/output directories
 tmp/
 output/
+
+# Node dependencies
+node_modules/
+
