@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, APIRouter
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -9,6 +9,8 @@ from src.campaigns.router import router as campaigns_router
 from src.channels.router import router as channels_router
 from src.common.exceptions import AppException
 from src.config import BASE_DIR, settings
+from src.content_plans.router import router as content_plans_router
+from src.dashboard.router import router as dashboard_router
 from src.posts.router import router as posts_router
 
 
@@ -39,7 +41,13 @@ async def app_exception_handler(_: Request, exc: AppException) -> JSONResponse:
     )
 
 
-app.include_router(auth_router)
-app.include_router(campaigns_router)
-app.include_router(channels_router)
-app.include_router(posts_router)
+root_router = APIRouter(prefix="/api")
+root_router.include_router(auth_router)
+root_router.include_router(campaigns_router)
+root_router.include_router(channels_router)
+root_router.include_router(content_plans_router)
+root_router.include_router(posts_router)
+
+
+app.include_router(root_router)
+app.include_router(dashboard_router)

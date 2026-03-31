@@ -21,6 +21,15 @@ class CampaignDateRangeInvalid(AppException):
         )
 
 
+class CampaignCadenceInvalid(AppException):
+    def __init__(self) -> None:
+        super().__init__(
+            code="campaign_cadence_invalid",
+            message="Campaign cadence values must be greater than or equal to 1.",
+            status_code=400,
+        )
+
+
 class CampaignChannelsRequired(AppException):
     def __init__(self) -> None:
         super().__init__(
@@ -35,6 +44,16 @@ class CampaignChannelInvalid(AppException):
         super().__init__(
             code="campaign_channel_invalid",
             message="The campaign contains an unsupported channel.",
+            status_code=400,
+            extra={"channel": channel},
+        )
+
+
+class CampaignChannelNotConnected(AppException):
+    def __init__(self, channel: str) -> None:
+        super().__init__(
+            code="campaign_channel_not_connected",
+            message="The selected campaign channel is not connected for this user.",
             status_code=400,
             extra={"channel": channel},
         )

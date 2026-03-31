@@ -24,6 +24,8 @@ class CampaignRepository:
         name: str,
         start_date: date,
         end_date: date,
+        posts_per_interval: int,
+        interval_days: int,
         goal: str,
         hook_style: str,
         tone: str,
@@ -37,6 +39,8 @@ class CampaignRepository:
             name=name,
             start_date=start_date,
             end_date=end_date,
+            posts_per_interval=posts_per_interval,
+            interval_days=interval_days,
             goal=goal,
             hook_style=hook_style,
             tone=tone,
@@ -80,6 +84,8 @@ class CampaignRepository:
         name: str | None,
         start_date: date | None,
         end_date: date | None,
+        posts_per_interval: int | None,
+        interval_days: int | None,
         goal: str | None,
         hook_style: str | None,
         tone: str | None,
@@ -94,6 +100,10 @@ class CampaignRepository:
             campaign.start_date = start_date
         if end_date is not None:
             campaign.end_date = end_date
+        if posts_per_interval is not None:
+            campaign.posts_per_interval = posts_per_interval
+        if interval_days is not None:
+            campaign.interval_days = interval_days
         if goal is not None:
             campaign.goal = goal
         if hook_style is not None:

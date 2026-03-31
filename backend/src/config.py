@@ -2,6 +2,7 @@ from pathlib import Path
 
 from pydantic_settings import SettingsConfigDict
 
+from src.settings.ai import AISettings
 from src.settings.app import AppSettings
 from src.settings.auth import AuthSettings
 from src.settings.database import DatabaseSettings
@@ -14,6 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 class Settings(
+    AISettings,
     AppSettings,
     DatabaseSettings,
     AuthSettings,

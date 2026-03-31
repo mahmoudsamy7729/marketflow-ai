@@ -54,8 +54,10 @@ class PostResponse(BaseModel):
     id: UUID
     user_id: UUID
     campaign_id: UUID
+    content_plan_item_id: UUID | None
     channel: str
     body: str
+    image_prompt: str | None
     status: str
     scheduled_for: datetime | None
     published_at: datetime | None
