@@ -1,0 +1,283 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+from uuid import UUID, uuid4
+
+from fastapi import UploadFile
+
+from src.auth.models import User
+from src.config import BASE_DIR, settings
+from src.posts import exceptions
+from src.posts.models import (
+    ALLOWED_POST_CHANNELS,
+    ALLOWED_POST_STATUSES,
+    EDITABLE_POST_STATUSES,
+    REMOTE_URL_STORAGE_TYPE,
+    UPLOADED_FILE_STORAGE_TYPE,
+    Post,
+    PostImage,
+)
+from src.posts.repositories import PostRepository
+from src.posts.schemas import (
+    AttachImageUrlsRequest,
+    PostCreateRequest,
+    PostImageResponse,
+    PostListResponse,
+    PostMessageResponse,
+    PostResponse,
+    PostUpdateRequest,
+)
+
+
+class PostService:
+    def __init__(self, repository: PostRepository) -> None:
+        self.repository = repository
+
+    async def create_post(self, user: User, payload: PostCreateRequest) -> PostResponse:
+        campaign = await self.repository.get_campaign_by_id_for_user(payload.campaign_id, user.id)
+        if campaign is None:
+            raise exceptions.PostCampaignNotFound()
+
+        channel = self._normalize_channel(payload.channel)
+        self._ensure_channel_is_targeted(channel, campaign)
+
+        scheduled_for = self._normalize_datetime(payload.scheduled_for)
+        status = "scheduled" if scheduled_for is not None else "draft"
+        image_urls = [str(url) for url in payload.image_urls or []]
+
+        post = await self.repository.create_post(
+            user_id=user.id,
+            campaign_id=campaign.id,
+            channel=channel,
+            body=payload.body.strip(),
+            status=status,
+            scheduled_for=scheduled_for,
+            image_urls=image_urls,
+        )
+        return self._to_response(post)
+
+    async def list_posts(
+        self,
+        user: User,
+        *,
+        campaign_id: UUID | None,
+        status: str | None,
+        channel: str | None,
+    ) -> PostListResponse:
+        normalized_status = self._normalize_status(status) if status is not None else None
+        normalized_channel = self._normalize_channel(channel) if channel is not None else None
+
+        posts = await self.repository.list_posts_by_user(
+            user_id=user.id,
+            campaign_id=campaign_id,
+            status=normalized_status,
+            channel=normalized_channel,
+        )
+        return PostListResponse(posts=[self._to_response(post) for post in posts])
+
+    async def get_post(self, user: User, post_id: UUID) -> PostResponse:
+        post = await self.repository.get_post_by_id_for_user(post_id, user.id)
+        if post is None:
+            raise exceptions.PostNotFound()
+        return self._to_response(post)
+
+    async def update_post(
+        self,
+        user: User,
+        post_id: UUID,
+        payload: PostUpdateRequest,
+    ) -> PostResponse:
+        post = await self.repository.get_post_by_id_for_user(post_id, user.id)
+        if post is None:
+            raise exceptions.PostNotFound()
+
+        update_fields = payload.model_fields_set
+        update_body = "body" in update_fields
+        update_scheduled_for = "scheduled_for" in update_fields
+        update_status = "status" in update_fields
+        replace_remote_image_urls = "image_urls" in update_fields
+
+        normalized_scheduled_for = self._normalize_datetime(payload.scheduled_for) if update_scheduled_for else None
+        normalized_status = None
+        if update_status:
+            normalized_status = self._normalize_status(payload.status, editable_only=True)
+
+        if update_scheduled_for:
+            if normalized_scheduled_for is not None:
+                normalized_status = "scheduled"
+                update_status = True
+            elif not update_status and post.status == "scheduled":
+                normalized_status = "draft"
+                update_status = True
+
+        updated_post = await self.repository.update_post(
+            post,
+            body=payload.body.strip() if payload.body else None,
+            update_body=update_body,
+            scheduled_for=normalized_scheduled_for,
+            update_scheduled_for=update_scheduled_for,
+            status=normalized_status,
+            update_status=update_status,
+            remote_image_urls=[str(url) for url in payload.image_urls or []],
+            replace_remote_image_urls=replace_remote_image_urls,
+        )
+        return self._to_response(updated_post)
+
+    async def delete_post(self, user: User, post_id: UUID) -> PostMessageResponse:
+        post = await self.repository.get_post_by_id_for_user(post_id, user.id)
+        if post is None:
+            raise exceptions.PostNotFound()
+
+        await self.repository.soft_delete_post(post)
+        return PostMessageResponse(message="Post deleted successfully.")
+
+    async def upload_images(
+        self,
+        user: User,
+        post_id: UUID,
+        files: list[UploadFile],
+    ) -> PostResponse:
+        post = await self.repository.get_post_by_id_for_user(post_id, user.id)
+        if post is None:
+            raise exceptions.PostNotFound()
+
+        upload_root = self._get_upload_root()
+        post_dir = upload_root / str(user.id) / str(post.id)
+        post_dir.mkdir(parents=True, exist_ok=True)
+
+        image_payloads: list[dict[str, str | None]] = []
+        written_files: list[Path] = []
+        try:
+            for file in files:
+                extension = Path(file.filename or "").suffix
+                generated_name = f"{uuid4().hex}{extension}"
+                destination = post_dir / generated_name
+                file_bytes = await file.read()
+                destination.write_bytes(file_bytes)
+                written_files.append(destination)
+
+                relative_path = destination.relative_to(upload_root).as_posix()
+                image_payloads.append(
+                    {
+                        "storage_type": UPLOADED_FILE_STORAGE_TYPE,
+                        "file_url": self._build_public_url(relative_path),
+                        "file_path": relative_path,
+                        "original_filename": file.filename,
+                        "mime_type": file.content_type,
+                    }
+                )
+        except Exception:
+            for written_file in written_files:
+                written_file.unlink(missing_ok=True)
+            raise
+        finally:
+            for file in files:
+                await file.close()
+
+        updated_post = await self.repository.append_post_images(post, image_payloads)
+        return self._to_response(updated_post)
+
+    async def attach_image_urls(
+        self,
+        user: User,
+        post_id: UUID,
+        payload: AttachImageUrlsRequest,
+    ) -> PostResponse:
+        post = await self.repository.get_post_by_id_for_user(post_id, user.id)
+        if post is None:
+            raise exceptions.PostNotFound()
+
+        image_payloads = [
+            {
+                "storage_type": REMOTE_URL_STORAGE_TYPE,
+                "file_url": str(image_url),
+                "file_path": None,
+                "original_filename": None,
+                "mime_type": None,
+            }
+            for image_url in payload.image_urls
+        ]
+        updated_post = await self.repository.append_post_images(post, image_payloads)
+        return self._to_response(updated_post)
+
+    async def delete_image(self, user: User, post_id: UUID, image_id: UUID) -> PostResponse:
+        post = await self.repository.get_post_by_id_for_user(post_id, user.id)
+        if post is None:
+            raise exceptions.PostNotFound()
+
+        image = await self.repository.get_post_image_for_post(post.id, image_id)
+        if image is None:
+            raise exceptions.PostImageNotFound()
+
+        if image.storage_type == UPLOADED_FILE_STORAGE_TYPE and image.file_path:
+            file_path = self._get_upload_root() / image.file_path
+            file_path.unlink(missing_ok=True)
+
+        await self.repository.delete_post_image(image)
+        refreshed_post = await self.repository.get_post_by_id_for_user(post.id, user.id)
+        return self._to_response(refreshed_post)
+
+    def _normalize_channel(self, channel: str) -> str:
+        normalized = channel.strip().lower()
+        if normalized not in ALLOWED_POST_CHANNELS:
+            raise exceptions.PostChannelInvalid(normalized)
+        return normalized
+
+    def _ensure_channel_is_targeted(self, channel: str, campaign) -> None:
+        targeted_channels = {campaign_channel.channel for campaign_channel in campaign.channels}
+        if channel not in targeted_channels:
+            raise exceptions.PostChannelNotAllowedForCampaign(channel)
+
+    def _normalize_status(self, status: str | None, *, editable_only: bool = False) -> str:
+        normalized = (status or "").strip().lower()
+        if normalized not in ALLOWED_POST_STATUSES:
+            raise exceptions.PostStatusInvalid(normalized)
+        if editable_only and normalized not in EDITABLE_POST_STATUSES:
+            raise exceptions.PostStatusNotEditable(normalized)
+        return normalized
+
+    def _normalize_datetime(self, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    def _get_upload_root(self) -> Path:
+        configured_path = Path(settings.post_upload_dir)
+        if configured_path.is_absolute():
+            return configured_path
+        return BASE_DIR / configured_path
+
+    def _build_public_url(self, relative_path: str) -> str:
+        return f"{settings.post_media_url_prefix}/{relative_path.replace('\\', '/')}"
+
+    def _to_response(self, post: Post) -> PostResponse:
+        images = sorted(post.images, key=lambda image: (image.sort_order, image.created_at))
+        return PostResponse(
+            id=post.id,
+            user_id=post.user_id,
+            campaign_id=post.campaign_id,
+            channel=post.channel,
+            body=post.body,
+            status=post.status,
+            scheduled_for=post.scheduled_for,
+            published_at=post.published_at,
+            external_post_id=post.external_post_id,
+            error_message=post.error_message,
+            images=[self._to_image_response(image) for image in images],
+            created_at=post.created_at,
+            updated_at=post.updated_at,
+            deleted_at=post.deleted_at,
+        )
+
+    def _to_image_response(self, image: PostImage) -> PostImageResponse:
+        return PostImageResponse(
+            id=image.id,
+            storage_type=image.storage_type,
+            url=image.file_url,
+            original_filename=image.original_filename,
+            mime_type=image.mime_type,
+            sort_order=image.sort_order,
+        )

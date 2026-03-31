@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+from src.common.exceptions import AppException
+
+
+class PostNotFound(AppException):
+    def __init__(self) -> None:
+        super().__init__(
+            code="post_not_found",
+            message="Post not found.",
+            status_code=404,
+        )
+
+
+class PostCampaignNotFound(AppException):
+    def __init__(self) -> None:
+        super().__init__(
+            code="post_campaign_not_found",
+            message="Campaign not found for this post.",
+            status_code=404,
+        )
+
+
+class PostChannelInvalid(AppException):
+    def __init__(self, channel: str) -> None:
+        super().__init__(
+            code="post_channel_invalid",
+            message="The post contains an unsupported channel.",
+            status_code=400,
+            extra={"channel": channel},
+        )
+
+
+class PostChannelNotAllowedForCampaign(AppException):
+    def __init__(self, channel: str) -> None:
+        super().__init__(
+            code="post_channel_not_allowed_for_campaign",
+            message="The selected channel is not targeted by the campaign.",
+            status_code=400,
+            extra={"channel": channel},
+        )
+
+
+class PostStatusInvalid(AppException):
+    def __init__(self, status: str) -> None:
+        super().__init__(
+            code="post_status_invalid",
+            message="The post contains an unsupported status.",
+            status_code=400,
+            extra={"status": status},
+        )
+
+
+class PostStatusNotEditable(AppException):
+    def __init__(self, status: str) -> None:
+        super().__init__(
+            code="post_status_not_editable",
+            message="Only draft and scheduled statuses can be set manually.",
+            status_code=400,
+            extra={"status": status},
+        )
+
+
+class PostImageNotFound(AppException):
+    def __init__(self) -> None:
+        super().__init__(
+            code="post_image_not_found",
+            message="Post image not found.",
+            status_code=404,
+        )
