@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
@@ -14,6 +16,8 @@ class FacebookOAuthProvider:
     TOKEN_URL = "https://graph.facebook.com/{version}/oauth/access_token"
     PROFILE_URL = "https://graph.facebook.com/{version}/me"
     PAGES_URL = "https://graph.facebook.com/{version}/me/accounts"
+    FEED_POST_URL = "https://graph.facebook.com/{version}/{page_id}/feed"
+    PHOTOS_URL = "https://graph.facebook.com/{version}/{page_id}/photos"
 
     def _ensure_configured(self) -> None:
         if (
@@ -96,3 +100,137 @@ class FacebookOAuthProvider:
             raise exceptions.FacebookPagesFetchFailed()
 
         return data
+
+    async def publish_feed_post(
+        self,
+        page_id: str,
+        page_access_token: str,
+        message: str,
+    ) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                response = await client.post(
+                    self.FEED_POST_URL.format(
+                        version=settings.facebook_api_version,
+                        page_id=page_id,
+                    ),
+                    data={
+                        "message": message,
+                        "access_token": page_access_token,
+                    },
+                )
+                response.raise_for_status()
+                return response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise exceptions.FacebookPublishFailed() from exc
+
+    async def upload_unpublished_photo_from_url(
+        self,
+        page_id: str,
+        page_access_token: str,
+        image_url: str,
+    ) -> str:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    self.PHOTOS_URL.format(
+                        version=settings.facebook_api_version,
+                        page_id=page_id,
+                    ),
+                    data={
+                        "url": image_url,
+                        "published": "false",
+                        "access_token": page_access_token,
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise exceptions.FacebookPublishFailed() from exc
+
+        media_id = str(payload.get("id", "")).strip()
+        if not media_id:
+            raise exceptions.FacebookPublishFailed()
+        return media_id
+
+    async def upload_unpublished_photo_from_bytes(
+        self,
+        page_id: str,
+        page_access_token: str,
+        file_bytes: bytes,
+        filename: str,
+        mime_type: str | None,
+    ) -> str:
+        try:
+            payload = await asyncio.to_thread(
+                self._upload_unpublished_photo_from_bytes_sync,
+                page_id,
+                page_access_token,
+                file_bytes,
+                filename,
+                mime_type,
+            )
+        except (httpx.HTTPError, ValueError) as exc:
+            raise exceptions.FacebookPublishFailed() from exc
+
+        media_id = str(payload.get("id", "")).strip()
+        if not media_id:
+            raise exceptions.FacebookPublishFailed()
+        return media_id
+
+    async def publish_feed_post_with_media(
+        self,
+        page_id: str,
+        page_access_token: str,
+        message: str,
+        media_ids: list[str],
+    ) -> dict:
+        form_data: dict[str, str] = {
+            "message": message,
+            "access_token": page_access_token,
+        }
+        for index, media_id in enumerate(media_ids):
+            form_data[f"attached_media[{index}]"] = json.dumps({"media_fbid": media_id})
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    self.FEED_POST_URL.format(
+                        version=settings.facebook_api_version,
+                        page_id=page_id,
+                    ),
+                    data=form_data,
+                )
+                response.raise_for_status()
+                return response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise exceptions.FacebookPublishFailed() from exc
+
+    def _upload_unpublished_photo_from_bytes_sync(
+        self,
+        page_id: str,
+        page_access_token: str,
+        file_bytes: bytes,
+        filename: str,
+        mime_type: str | None,
+    ) -> dict:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(
+                self.PHOTOS_URL.format(
+                    version=settings.facebook_api_version,
+                    page_id=page_id,
+                ),
+                data={
+                    "published": "false",
+                    "access_token": page_access_token,
+                },
+                files={
+                    "source": (
+                        filename,
+                        file_bytes,
+                        mime_type or "application/octet-stream",
+                    )
+                },
+            )
+            response.raise_for_status()
+            return response.json()

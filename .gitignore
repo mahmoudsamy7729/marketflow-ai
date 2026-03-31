@@ -14,3 +14,7 @@ wheels/
 
 # User uploads
 uploads/
+
+# Local temp/output directories
+tmp/
+output/

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Date, DateTime, ForeignKey, String, Text, Uuid, UniqueConstraint, func
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text, Uuid, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database import Base
@@ -26,6 +26,8 @@ class Campaign(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    posts_per_interval: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    interval_days: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     goal: Mapped[str] = mapped_column(Text, nullable=False)
     hook_style: Mapped[str] = mapped_column(Text, nullable=False)
     tone: Mapped[str] = mapped_column(Text, nullable=False)

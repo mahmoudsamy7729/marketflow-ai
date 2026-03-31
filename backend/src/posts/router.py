@@ -73,6 +73,15 @@ async def delete_post(
     return await service.delete_post(current_user, post_id)
 
 
+@router.post("/{post_id}/publish-now", response_model=PostMessageResponse)
+async def publish_post_now(
+    post_id: UUID,
+    current_user: current_user_dependency,
+    service: post_service_dependency,
+) -> PostMessageResponse:
+    return await service.publish_now(current_user, post_id)
+
+
 @router.post("/{post_id}/images/upload", response_model=PostResponse)
 async def upload_post_images(
     post_id: UUID,

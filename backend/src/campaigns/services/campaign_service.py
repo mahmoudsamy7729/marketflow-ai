@@ -4,6 +4,7 @@ from datetime import date
 from uuid import UUID
 
 from src.auth.models import User
+from src.channels.repositories import ChannelRepository
 from src.campaigns import exceptions
 from src.campaigns.models import (
     ALLOWED_CAMPAIGN_CHANNELS,
@@ -24,8 +25,13 @@ DEFAULT_CAMPAIGN_STATUS = "draft"
 
 
 class CampaignService:
-    def __init__(self, repository: CampaignRepository) -> None:
+    def __init__(
+        self,
+        repository: CampaignRepository,
+        channel_repository: ChannelRepository,
+    ) -> None:
         self.repository = repository
+        self.channel_repository = channel_repository
 
     async def create_campaign(
         self,
@@ -34,12 +40,16 @@ class CampaignService:
     ) -> CampaignResponse:
         channels = self._normalize_channels(payload.channels)
         self._validate_date_range(payload.start_date, payload.end_date)
+        self._validate_cadence(payload.posts_per_interval, payload.interval_days)
+        await self._validate_connected_channels(user, channels)
 
         campaign = await self.repository.create_campaign(
             user_id=user.id,
             name=payload.name.strip(),
             start_date=payload.start_date,
             end_date=payload.end_date,
+            posts_per_interval=payload.posts_per_interval,
+            interval_days=payload.interval_days,
             goal=payload.goal.strip(),
             hook_style=payload.hook_style.strip(),
             tone=payload.tone.strip(),
@@ -77,9 +87,14 @@ class CampaignService:
         next_end_date = payload.end_date or campaign.end_date
         self._validate_date_range(next_start_date, next_end_date)
 
+        next_posts_per_interval = payload.posts_per_interval or campaign.posts_per_interval
+        next_interval_days = payload.interval_days or campaign.interval_days
+        self._validate_cadence(next_posts_per_interval, next_interval_days)
+
         channels = None
         if payload.channels is not None:
             channels = self._normalize_channels(payload.channels)
+            await self._validate_connected_channels(user, channels)
 
         status = None
         if payload.status is not None:
@@ -90,6 +105,8 @@ class CampaignService:
             name=payload.name.strip() if payload.name else None,
             start_date=payload.start_date,
             end_date=payload.end_date,
+            posts_per_interval=payload.posts_per_interval,
+            interval_days=payload.interval_days,
             goal=payload.goal.strip() if payload.goal else None,
             hook_style=payload.hook_style.strip() if payload.hook_style else None,
             tone=payload.tone.strip() if payload.tone else None,
@@ -139,6 +156,16 @@ class CampaignService:
         if start_date > end_date:
             raise exceptions.CampaignDateRangeInvalid()
 
+    def _validate_cadence(self, posts_per_interval: int, interval_days: int) -> None:
+        if posts_per_interval < 1 or interval_days < 1:
+            raise exceptions.CampaignCadenceInvalid()
+
+    async def _validate_connected_channels(self, user: User, channels: list[str]) -> None:
+        connected_providers = await self.channel_repository.list_connected_providers_by_user(user.id)
+        for channel in channels:
+            if channel not in connected_providers:
+                raise exceptions.CampaignChannelNotConnected(channel)
+
     def _to_response(self, campaign: Campaign) -> CampaignResponse:
         return CampaignResponse(
             id=campaign.id,
@@ -146,6 +173,8 @@ class CampaignService:
             name=campaign.name,
             start_date=campaign.start_date,
             end_date=campaign.end_date,
+            posts_per_interval=campaign.posts_per_interval,
+            interval_days=campaign.interval_days,
             goal=campaign.goal,
             hook_style=campaign.hook_style,
             tone=campaign.tone,

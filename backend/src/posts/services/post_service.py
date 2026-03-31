@@ -7,6 +7,10 @@ from uuid import UUID, uuid4
 from fastapi import UploadFile
 
 from src.auth.models import User
+from src.channels import exceptions as channel_exceptions
+from src.channels.providers import FacebookOAuthProvider
+from src.channels.repositories import ChannelRepository
+from src.channels.repositories.channel_repository import FACEBOOK_PROVIDER
 from src.config import BASE_DIR, settings
 from src.posts import exceptions
 from src.posts.models import (
@@ -31,8 +35,15 @@ from src.posts.schemas import (
 
 
 class PostService:
-    def __init__(self, repository: PostRepository) -> None:
+    def __init__(
+        self,
+        repository: PostRepository,
+        channel_repository: ChannelRepository | None = None,
+        facebook_provider: FacebookOAuthProvider | None = None,
+    ) -> None:
         self.repository = repository
+        self.channel_repository = channel_repository
+        self.facebook_provider = facebook_provider
 
     async def create_post(self, user: User, payload: PostCreateRequest) -> PostResponse:
         campaign = await self.repository.get_campaign_by_id_for_user(payload.campaign_id, user.id)
@@ -49,8 +60,10 @@ class PostService:
         post = await self.repository.create_post(
             user_id=user.id,
             campaign_id=campaign.id,
+            content_plan_item_id=None,
             channel=channel,
             body=payload.body.strip(),
+            image_prompt=None,
             status=status,
             scheduled_for=scheduled_for,
             image_urls=image_urls,
@@ -131,6 +144,107 @@ class PostService:
 
         await self.repository.soft_delete_post(post)
         return PostMessageResponse(message="Post deleted successfully.")
+
+    async def publish_now(self, user: User, post_id: UUID) -> PostMessageResponse:
+        post = await self.repository.get_post_by_id_for_user(post_id, user.id)
+        if post is None:
+            raise exceptions.PostNotFound()
+
+        if self.channel_repository is None or self.facebook_provider is None:
+            raise RuntimeError("PostService publishing dependencies are not configured.")
+
+        if post.status not in EDITABLE_POST_STATUSES:
+            raise exceptions.PostPublishNowStatusInvalid(post.status)
+        if post.channel != FACEBOOK_PROVIDER:
+            raise exceptions.PostPublishNowChannelUnsupported(post.channel)
+
+        connection = await self.channel_repository.get_connection_by_user_and_provider(
+            user_id=user.id,
+            provider=FACEBOOK_PROVIDER,
+        )
+        if connection is None:
+            raise channel_exceptions.ChannelConnectionNotFound(FACEBOOK_PROVIDER)
+        selected_page = connection.selected_facebook_page
+        if selected_page is None:
+            raise channel_exceptions.FacebookSelectedPageNotFound(FACEBOOK_PROVIDER)
+
+        try:
+            provider_response = await self._publish_post_to_facebook(post, selected_page)
+            external_post_id = str(provider_response.get("id", "")).strip()
+            if not external_post_id:
+                raise channel_exceptions.FacebookPublishFailed()
+        except channel_exceptions.FacebookPublishFailed as exc:
+            await self.repository.mark_post_publish_failed(
+                post,
+                error_message=str(exc.message),
+            )
+            raise exceptions.PostPublishNowFailed() from exc
+
+        await self.repository.mark_post_published_now(
+            post,
+            external_post_id=external_post_id,
+            published_at=datetime.now(timezone.utc),
+        )
+        return PostMessageResponse(message="Post published successfully.")
+
+    async def _publish_post_to_facebook(self, post: Post, selected_page) -> dict:
+        if not post.images:
+            return await self.facebook_provider.publish_feed_post(
+                page_id=selected_page.facebook_page_id,
+                page_access_token=selected_page.page_access_token,
+                message=post.body,
+            )
+
+        media_ids: list[str] = []
+        for image in sorted(post.images, key=lambda item: (item.sort_order, item.created_at)):
+            media_ids.append(
+                await self._upload_post_image_to_facebook(
+                    image=image,
+                    page_id=selected_page.facebook_page_id,
+                    page_access_token=selected_page.page_access_token,
+                )
+            )
+
+        return await self.facebook_provider.publish_feed_post_with_media(
+            page_id=selected_page.facebook_page_id,
+            page_access_token=selected_page.page_access_token,
+            message=post.body,
+            media_ids=media_ids,
+        )
+
+    async def _upload_post_image_to_facebook(
+        self,
+        *,
+        image: PostImage,
+        page_id: str,
+        page_access_token: str,
+    ) -> str:
+        if image.storage_type == REMOTE_URL_STORAGE_TYPE:
+            return await self.facebook_provider.upload_unpublished_photo_from_url(
+                page_id=page_id,
+                page_access_token=page_access_token,
+                image_url=image.file_url,
+            )
+
+        if image.storage_type == UPLOADED_FILE_STORAGE_TYPE:
+            if not image.file_path:
+                raise channel_exceptions.FacebookPublishFailed()
+
+            file_path = self._get_upload_root() / image.file_path
+            try:
+                file_bytes = file_path.read_bytes()
+            except OSError as exc:
+                raise channel_exceptions.FacebookPublishFailed() from exc
+
+            return await self.facebook_provider.upload_unpublished_photo_from_bytes(
+                page_id=page_id,
+                page_access_token=page_access_token,
+                file_bytes=file_bytes,
+                filename=image.original_filename or file_path.name,
+                mime_type=image.mime_type,
+            )
+
+        raise channel_exceptions.FacebookPublishFailed()
 
     async def upload_images(
         self,
@@ -259,8 +373,10 @@ class PostService:
             id=post.id,
             user_id=post.user_id,
             campaign_id=post.campaign_id,
+            content_plan_item_id=post.content_plan_item_id,
             channel=post.channel,
             body=post.body,
+            image_prompt=post.image_prompt,
             status=post.status,
             scheduled_for=post.scheduled_for,
             published_at=post.published_at,

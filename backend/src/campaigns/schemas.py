@@ -10,6 +10,8 @@ class CampaignCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     start_date: date
     end_date: date
+    posts_per_interval: int = Field(ge=1)
+    interval_days: int = Field(ge=1)
     goal: str = Field(min_length=1)
     hook_style: str = Field(min_length=1)
     tone: str = Field(min_length=1)
@@ -29,6 +31,8 @@ class CampaignUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     start_date: date | None = None
     end_date: date | None = None
+    posts_per_interval: int | None = Field(default=None, ge=1)
+    interval_days: int | None = Field(default=None, ge=1)
     goal: str | None = Field(default=None, min_length=1)
     hook_style: str | None = Field(default=None, min_length=1)
     tone: str | None = Field(default=None, min_length=1)
@@ -53,6 +57,8 @@ class CampaignResponse(BaseModel):
     name: str
     start_date: date
     end_date: date
+    posts_per_interval: int
+    interval_days: int
     goal: str
     hook_style: str
     tone: str

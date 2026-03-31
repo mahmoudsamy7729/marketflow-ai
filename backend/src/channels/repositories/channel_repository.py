@@ -95,6 +95,15 @@ class ChannelRepository:
         result = await self.session.scalars(statement)
         return list(result.all())
 
+    async def list_connected_providers_by_user(self, user_id: UUID) -> set[str]:
+        statement = select(ChannelConnection.provider).where(
+            ChannelConnection.user_id == user_id,
+            ChannelConnection.status == CONNECTED_STATUS,
+            ChannelConnection.deleted_at.is_(None),
+        )
+        result = await self.session.scalars(statement)
+        return {provider for provider in result.all()}
+
     async def upsert_facebook_connection(
         self,
         user_id: UUID,

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.campaigns.models import Campaign
+from src.content_plans.models import ContentPlanItem
 from src.posts.models import Post, PostImage, REMOTE_URL_STORAGE_TYPE
 
 
@@ -39,8 +40,10 @@ class PostRepository:
         *,
         user_id: UUID,
         campaign_id: UUID,
+        content_plan_item_id: UUID | None,
         channel: str,
         body: str,
+        image_prompt: str | None,
         status: str,
         scheduled_for: datetime | None,
         image_urls: list[str],
@@ -48,8 +51,10 @@ class PostRepository:
         post = Post(
             user_id=user_id,
             campaign_id=campaign_id,
+            content_plan_item_id=content_plan_item_id,
             channel=channel,
             body=body,
+            image_prompt=image_prompt,
             status=status,
             scheduled_for=scheduled_for,
             images=[
@@ -64,6 +69,48 @@ class PostRepository:
         self.session.add(post)
         await self.session.commit()
         return await self.get_post_by_id_for_user(post.id, user_id)
+
+    async def bulk_create_posts_from_plan_items(
+        self,
+        *,
+        user_id: UUID,
+        campaign_id: UUID,
+        generated_posts: list[dict[str, str | UUID | None]],
+    ) -> list[Post]:
+        posts: list[Post] = []
+        plan_item_ids = [post["content_plan_item_id"] for post in generated_posts]
+        statement = select(ContentPlanItem).where(ContentPlanItem.id.in_(plan_item_ids))
+        items = list((await self.session.scalars(statement)).all())
+        items_by_id = {item.id: item for item in items}
+
+        for generated_post in generated_posts:
+            content_plan_item_id = generated_post["content_plan_item_id"]
+            item = items_by_id.get(content_plan_item_id)
+            if item is not None:
+                item.status = "post_generated"
+
+            post = Post(
+                user_id=user_id,
+                campaign_id=campaign_id,
+                content_plan_item_id=content_plan_item_id,
+                channel=str(generated_post["channel"]),
+                body=str(generated_post["body"]),
+                image_prompt=generated_post.get("image_prompt"),
+                status="draft",
+                scheduled_for=None,
+            )
+            self.session.add(post)
+            posts.append(post)
+
+        await self.session.flush()
+        post_ids = [post.id for post in posts]
+        await self.session.commit()
+
+        statement = self._post_statement().where(Post.user_id == user_id, Post.id.in_(post_ids))
+        result = await self.session.scalars(statement)
+        fetched_posts = list(result.unique().all())
+        post_map = {post.id: post for post in fetched_posts}
+        return [post_map[post_id] for post_id in post_ids if post_id in post_map]
 
     async def list_posts_by_user(
         self,
@@ -147,6 +194,34 @@ class PostRepository:
         await self.session.commit()
         await self.session.refresh(post)
         return post
+
+    async def mark_post_published_now(
+        self,
+        post: Post,
+        *,
+        external_post_id: str,
+        published_at: datetime,
+    ) -> Post:
+        post.status = "published"
+        post.published_at = published_at
+        post.external_post_id = external_post_id
+        post.scheduled_for = None
+        post.error_message = None
+        await self.session.commit()
+        return await self.get_post_by_id_for_user(post.id, post.user_id)
+
+    async def mark_post_publish_failed(
+        self,
+        post: Post,
+        *,
+        error_message: str,
+    ) -> Post:
+        post.status = "failed"
+        post.error_message = error_message
+        post.published_at = None
+        post.external_post_id = None
+        await self.session.commit()
+        return await self.get_post_by_id_for_user(post.id, post.user_id)
 
     async def append_post_images(
         self,

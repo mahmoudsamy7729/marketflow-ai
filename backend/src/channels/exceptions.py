@@ -66,6 +66,15 @@ class FacebookPagesFetchFailed(AppException):
         )
 
 
+class FacebookPublishFailed(AppException):
+    def __init__(self) -> None:
+        super().__init__(
+            code="facebook_publish_failed",
+            message="Facebook publish failed.",
+            status_code=502,
+        )
+
+
 class ChannelConnectionNotFound(AppException):
     def __init__(self, provider: str) -> None:
         super().__init__(
