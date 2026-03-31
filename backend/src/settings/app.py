@@ -1,4 +1,4 @@
-from pydantic import AliasChoices, Field
+﻿from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -20,6 +20,7 @@ class AppSettings(BaseSettings):
         validation_alias=AliasChoices("APP_URL", "app_url"),
     )
     frontend_url: str = Field(
-        default="http://localhost:3000",
+        default="http://localhost:5173",
         validation_alias=AliasChoices("FRONTEND_URL", "frontend_url"),
     )
+

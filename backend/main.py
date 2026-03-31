@@ -1,6 +1,7 @@
-from pathlib import Path
+﻿from pathlib import Path
 
-from fastapi import FastAPI, Request, APIRouter
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -15,6 +16,13 @@ from src.posts.router import router as posts_router
 
 
 app = FastAPI(title=settings.app_name, debug=settings.app_debug)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.frontend_url],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 post_upload_root = Path(settings.post_upload_dir)
 if not post_upload_root.is_absolute():
@@ -51,3 +59,4 @@ root_router.include_router(posts_router)
 
 app.include_router(root_router)
 app.include_router(dashboard_router)
+
