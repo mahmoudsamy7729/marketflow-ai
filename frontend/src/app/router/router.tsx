@@ -4,6 +4,7 @@ import type { RouteObject } from "react-router-dom";
 import { AppLayout } from "@/app/layouts/AppLayout";
 import { AuthLayout } from "@/app/layouts/AuthLayout";
 import { PublicOnlyRoute, RequireAuth } from "@/app/router/routeGuards";
+import { ChannelsPage } from "@/pages/ChannelsPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
@@ -41,6 +42,10 @@ export const appRoutes: RouteObject[] = [
           {
             path: "/dashboard",
             element: <DashboardPage />,
+          },
+          {
+            path: "/channels",
+            element: <ChannelsPage />,
           },
         ],
       },

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID
@@ -27,6 +27,14 @@ class FacebookCallbackResponse(BaseModel):
     granted_scopes: list[str]
 
 
+class SelectedFacebookPageResponse(BaseModel):
+    id: str
+    name: str
+    category: str | None
+    has_access_token: bool
+    tasks: list[str]
+
+
 class ChannelSummaryResponse(BaseModel):
     connection_id: UUID
     provider: str
@@ -34,6 +42,7 @@ class ChannelSummaryResponse(BaseModel):
     expires_at: datetime | None
     granted_scopes: list[str]
     profile: FacebookProfileResponse
+    selected_page: SelectedFacebookPageResponse | None = None
 
 
 class MyChannelsResponse(BaseModel):
@@ -61,14 +70,6 @@ class FacebookPagesResponse(BaseModel):
 
 class SelectFacebookPageRequest(BaseModel):
     page_id: str
-
-
-class SelectedFacebookPageResponse(BaseModel):
-    id: str
-    name: str
-    category: str | None
-    has_access_token: bool
-    tasks: list[str]
 
 
 class SelectFacebookPageResponse(BaseModel):

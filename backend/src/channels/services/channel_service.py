@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from secrets import token_urlsafe
@@ -13,11 +13,11 @@ from src.channels.schemas import (
     DisconnectChannelResponse,
     FacebookCallbackResponse,
     FacebookConnectResponse,
-    N8NFacebookPageResponse,
     FacebookPageResponse,
     FacebookPagesResponse,
-    MyChannelsResponse,
     FacebookProfileResponse,
+    MyChannelsResponse,
+    N8NFacebookPageResponse,
     ResolveFacebookPageRequest,
     ResolveFacebookPageResponse,
     SelectFacebookPageRequest,
@@ -156,13 +156,7 @@ class ChannelService:
         if selected_page is None:
             raise exceptions.FacebookSelectedPageNotFound(FACEBOOK_PROVIDER)
 
-        tasks = []
-        if selected_page.tasks:
-            tasks = [
-                task.strip()
-                for task in selected_page.tasks.split(",")
-                if task.strip()
-            ]
+        tasks = self._deserialize_tasks(selected_page.tasks)
 
         return ResolveFacebookPageResponse(
             provider=FACEBOOK_PROVIDER,
@@ -254,22 +248,37 @@ class ChannelService:
 
     def _build_channel_summary(self, connection) -> ChannelSummaryResponse:
         details = connection.facebook_details
-        granted_scopes = []
-        if details.granted_scopes:
-            granted_scopes = [
-                scope.strip()
-                for scope in details.granted_scopes.split(",")
-                if scope.strip()
-            ]
+        selected_page = connection.selected_facebook_page
 
         return ChannelSummaryResponse(
             connection_id=connection.id,
             provider=connection.provider,
             status=connection.status,
             expires_at=details.expires_at,
-            granted_scopes=granted_scopes,
+            granted_scopes=self._deserialize_tasks(details.granted_scopes),
             profile=FacebookProfileResponse(
                 facebook_user_id=details.facebook_user_id,
                 display_name=details.display_name,
             ),
+            selected_page=(
+                SelectedFacebookPageResponse(
+                    id=selected_page.facebook_page_id,
+                    name=selected_page.page_name,
+                    category=selected_page.category,
+                    has_access_token=bool(selected_page.page_access_token),
+                    tasks=self._deserialize_tasks(selected_page.tasks),
+                )
+                if selected_page is not None
+                else None
+            ),
         )
+
+    def _deserialize_tasks(self, value: str | None) -> list[str]:
+        if not value:
+            return []
+
+        return [
+            item.strip()
+            for item in value.split(",")
+            if item.strip()
+        ]
