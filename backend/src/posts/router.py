@@ -6,6 +6,8 @@ from uuid import UUID
 from fastapi import APIRouter, File, Query, UploadFile, status
 
 from src.dependencies import current_user_dependency
+from src.media_generation.dependencies import media_generation_service_dependency
+from src.media_generation.schemas import MediaGenerationJobResponse
 from src.posts.dependencies import post_service_dependency
 from src.posts.schemas import (
     AttachImageUrlsRequest,
@@ -80,6 +82,15 @@ async def publish_post_now(
     service: post_service_dependency,
 ) -> PostMessageResponse:
     return await service.publish_now(current_user, post_id)
+
+
+@router.post("/{post_id}/generate-image", response_model=MediaGenerationJobResponse)
+async def generate_post_image(
+    post_id: UUID,
+    current_user: current_user_dependency,
+    service: media_generation_service_dependency,
+) -> MediaGenerationJobResponse:
+    return await service.generate_image_for_post(current_user, post_id)
 
 
 @router.post("/{post_id}/images/upload", response_model=PostResponse)

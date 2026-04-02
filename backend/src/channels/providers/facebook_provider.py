@@ -18,6 +18,8 @@ class FacebookOAuthProvider:
     PAGES_URL = "https://graph.facebook.com/{version}/me/accounts"
     FEED_POST_URL = "https://graph.facebook.com/{version}/{page_id}/feed"
     PHOTOS_URL = "https://graph.facebook.com/{version}/{page_id}/photos"
+    INSTAGRAM_MEDIA_URL = "https://graph.facebook.com/{version}/{ig_account_id}/media"
+    INSTAGRAM_MEDIA_PUBLISH_URL = "https://graph.facebook.com/{version}/{ig_account_id}/media_publish"
 
     def _ensure_configured(self) -> None:
         if (
@@ -86,7 +88,7 @@ class FacebookOAuthProvider:
                 response = await client.get(
                     self.PAGES_URL.format(version=settings.facebook_api_version),
                     params={
-                        "fields": "id,name,category,access_token,tasks",
+                        "fields": "id,name,category,access_token,tasks,instagram_business_account{id,username,name,profile_picture_url}",
                         "access_token": access_token,
                     },
                 )
@@ -205,6 +207,64 @@ class FacebookOAuthProvider:
                 return response.json()
         except (httpx.HTTPError, ValueError) as exc:
             raise exceptions.FacebookPublishFailed() from exc
+
+    async def create_instagram_image_container(
+        self,
+        *,
+        ig_account_id: str,
+        access_token: str,
+        image_url: str,
+        caption: str | None,
+    ) -> str:
+        payload: dict[str, str] = {
+            "image_url": image_url,
+            "access_token": access_token,
+        }
+        if caption:
+            payload["caption"] = caption
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    self.INSTAGRAM_MEDIA_URL.format(
+                        version=settings.facebook_api_version,
+                        ig_account_id=ig_account_id,
+                    ),
+                    data=payload,
+                )
+                response.raise_for_status()
+                result = response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise exceptions.InstagramPublishFailed() from exc
+
+        container_id = str(result.get("id", "")).strip()
+        if not container_id:
+            raise exceptions.InstagramPublishFailed()
+        return container_id
+
+    async def publish_instagram_media(
+        self,
+        *,
+        ig_account_id: str,
+        access_token: str,
+        creation_id: str,
+    ) -> dict:
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    self.INSTAGRAM_MEDIA_PUBLISH_URL.format(
+                        version=settings.facebook_api_version,
+                        ig_account_id=ig_account_id,
+                    ),
+                    data={
+                        "creation_id": creation_id,
+                        "access_token": access_token,
+                    },
+                )
+                response.raise_for_status()
+                return response.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            raise exceptions.InstagramPublishFailed() from exc
 
     def _upload_unpublished_photo_from_bytes_sync(
         self,

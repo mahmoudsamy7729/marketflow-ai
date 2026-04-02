@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Mapping
 from uuid import UUID, uuid4
 
 from fastapi import UploadFile
@@ -10,7 +11,7 @@ from src.auth.models import User
 from src.channels import exceptions as channel_exceptions
 from src.channels.providers import FacebookOAuthProvider
 from src.channels.repositories import ChannelRepository
-from src.channels.repositories.channel_repository import FACEBOOK_PROVIDER
+from src.channels.repositories.channel_repository import FACEBOOK_PROVIDER, INSTAGRAM_PROVIDER
 from src.config import BASE_DIR, settings
 from src.posts import exceptions
 from src.posts.models import (
@@ -21,6 +22,11 @@ from src.posts.models import (
     UPLOADED_FILE_STORAGE_TYPE,
     Post,
     PostImage,
+)
+from src.posts.publishers import (
+    FacebookPostPublisher,
+    InstagramPostPublisher,
+    PostPublisher,
 )
 from src.posts.repositories import PostRepository
 from src.posts.schemas import (
@@ -40,10 +46,17 @@ class PostService:
         repository: PostRepository,
         channel_repository: ChannelRepository | None = None,
         facebook_provider: FacebookOAuthProvider | None = None,
+        publishers: Mapping[str, PostPublisher] | None = None,
     ) -> None:
         self.repository = repository
         self.channel_repository = channel_repository
         self.facebook_provider = facebook_provider
+        self.publishers = dict(publishers or {})
+        if not self.publishers and facebook_provider is not None:
+            self.publishers = {
+                FACEBOOK_PROVIDER: FacebookPostPublisher(facebook_provider),
+                INSTAGRAM_PROVIDER: InstagramPostPublisher(facebook_provider),
+            }
 
     async def create_post(self, user: User, payload: PostCreateRequest) -> PostResponse:
         campaign = await self.repository.get_campaign_by_id_for_user(payload.campaign_id, user.id)
@@ -62,7 +75,7 @@ class PostService:
             campaign_id=campaign.id,
             content_plan_item_id=None,
             channel=channel,
-            body=payload.body.strip(),
+            body=payload.body.strip() if payload.body else None,
             image_prompt=None,
             status=status,
             scheduled_for=scheduled_for,
@@ -155,7 +168,7 @@ class PostService:
 
         if post.status not in EDITABLE_POST_STATUSES:
             raise exceptions.PostPublishNowStatusInvalid(post.status)
-        if post.channel != FACEBOOK_PROVIDER:
+        if post.channel not in self.publishers:
             raise exceptions.PostPublishNowChannelUnsupported(post.channel)
 
         connection = await self.channel_repository.get_connection_by_user_and_provider(
@@ -169,11 +182,13 @@ class PostService:
             raise channel_exceptions.FacebookSelectedPageNotFound(FACEBOOK_PROVIDER)
 
         try:
-            provider_response = await self._publish_post_to_facebook(post, selected_page)
+            provider_response = await self._publish_post(post, selected_page)
             external_post_id = str(provider_response.get("id", "")).strip()
             if not external_post_id:
+                if post.channel == INSTAGRAM_PROVIDER:
+                    raise channel_exceptions.InstagramPublishFailed()
                 raise channel_exceptions.FacebookPublishFailed()
-        except channel_exceptions.FacebookPublishFailed as exc:
+        except (channel_exceptions.FacebookPublishFailed, channel_exceptions.InstagramPublishFailed) as exc:
             await self.repository.mark_post_publish_failed(
                 post,
                 error_message=str(exc.message),
@@ -187,64 +202,11 @@ class PostService:
         )
         return PostMessageResponse(message="Post published successfully.")
 
-    async def _publish_post_to_facebook(self, post: Post, selected_page) -> dict:
-        if not post.images:
-            return await self.facebook_provider.publish_feed_post(
-                page_id=selected_page.facebook_page_id,
-                page_access_token=selected_page.page_access_token,
-                message=post.body,
-            )
-
-        media_ids: list[str] = []
-        for image in sorted(post.images, key=lambda item: (item.sort_order, item.created_at)):
-            media_ids.append(
-                await self._upload_post_image_to_facebook(
-                    image=image,
-                    page_id=selected_page.facebook_page_id,
-                    page_access_token=selected_page.page_access_token,
-                )
-            )
-
-        return await self.facebook_provider.publish_feed_post_with_media(
-            page_id=selected_page.facebook_page_id,
-            page_access_token=selected_page.page_access_token,
-            message=post.body,
-            media_ids=media_ids,
-        )
-
-    async def _upload_post_image_to_facebook(
-        self,
-        *,
-        image: PostImage,
-        page_id: str,
-        page_access_token: str,
-    ) -> str:
-        if image.storage_type == REMOTE_URL_STORAGE_TYPE:
-            return await self.facebook_provider.upload_unpublished_photo_from_url(
-                page_id=page_id,
-                page_access_token=page_access_token,
-                image_url=image.file_url,
-            )
-
-        if image.storage_type == UPLOADED_FILE_STORAGE_TYPE:
-            if not image.file_path:
-                raise channel_exceptions.FacebookPublishFailed()
-
-            file_path = self._get_upload_root() / image.file_path
-            try:
-                file_bytes = file_path.read_bytes()
-            except OSError as exc:
-                raise channel_exceptions.FacebookPublishFailed() from exc
-
-            return await self.facebook_provider.upload_unpublished_photo_from_bytes(
-                page_id=page_id,
-                page_access_token=page_access_token,
-                file_bytes=file_bytes,
-                filename=image.original_filename or file_path.name,
-                mime_type=image.mime_type,
-            )
-
-        raise channel_exceptions.FacebookPublishFailed()
+    async def _publish_post(self, post: Post, selected_page) -> dict:
+        publisher = self.publishers.get(post.channel)
+        if publisher is None:
+            raise exceptions.PostPublishNowChannelUnsupported(post.channel)
+        return await publisher.publish(post, selected_page)
 
     async def upload_images(
         self,

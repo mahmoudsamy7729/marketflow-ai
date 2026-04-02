@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID
@@ -17,6 +17,13 @@ class FacebookProfileResponse(BaseModel):
     display_name: str | None
 
 
+class InstagramProfileResponse(BaseModel):
+    instagram_user_id: str
+    username: str | None
+    name: str | None = None
+    profile_picture_url: str | None = None
+
+
 class FacebookCallbackResponse(BaseModel):
     provider: str
     status: str
@@ -27,22 +34,16 @@ class FacebookCallbackResponse(BaseModel):
     granted_scopes: list[str]
 
 
-class SelectedFacebookPageResponse(BaseModel):
-    id: str
-    name: str
-    category: str | None
-    has_access_token: bool
-    tasks: list[str]
-
-
 class ChannelSummaryResponse(BaseModel):
     connection_id: UUID
     provider: str
     status: str
     expires_at: datetime | None
     granted_scopes: list[str]
-    profile: FacebookProfileResponse
-    selected_page: SelectedFacebookPageResponse | None = None
+    profile: FacebookProfileResponse | None = None
+    instagram_profile: InstagramProfileResponse | None = None
+    selected_target_id: str | None = None
+    selected_target_name: str | None = None
 
 
 class MyChannelsResponse(BaseModel):
@@ -61,6 +62,7 @@ class FacebookPageResponse(BaseModel):
     category: str | None
     has_access_token: bool
     tasks: list[str]
+    instagram_profile: InstagramProfileResponse | None = None
 
 
 class FacebookPagesResponse(BaseModel):
@@ -70,6 +72,15 @@ class FacebookPagesResponse(BaseModel):
 
 class SelectFacebookPageRequest(BaseModel):
     page_id: str
+
+
+class SelectedFacebookPageResponse(BaseModel):
+    id: str
+    name: str
+    category: str | None
+    has_access_token: bool
+    tasks: list[str]
+    instagram_profile: InstagramProfileResponse | None = None
 
 
 class SelectFacebookPageResponse(BaseModel):
