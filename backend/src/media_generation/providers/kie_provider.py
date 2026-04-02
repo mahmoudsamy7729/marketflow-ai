@@ -43,12 +43,28 @@ class KieProvider:
                 )
                 response.raise_for_status()
                 result = response.json()
+        except httpx.HTTPStatusError as exc:
+            raise exceptions.MediaGenerationSubmissionFailed(
+                message=self._render_http_error_message("Submitting the media generation task failed.", exc),
+                extra={"status_code": exc.response.status_code},
+            ) from exc
         except (httpx.HTTPError, ValueError) as exc:
-            raise exceptions.MediaGenerationSubmissionFailed() from exc
+            raise exceptions.MediaGenerationSubmissionFailed(
+                message=self._render_generic_error_message("Submitting the media generation task failed.", exc),
+            ) from exc
+
+        submit_error = self.extract_submit_error(result)
+        if submit_error is not None:
+            raise exceptions.MediaGenerationSubmissionFailed(
+                message=submit_error["message"],
+                extra=submit_error["extra"],
+            )
 
         task_id = self.extract_submit_task_id(result)
         if not task_id:
-            raise exceptions.MediaGenerationSubmissionFailed()
+            raise exceptions.MediaGenerationSubmissionFailed(
+                message="Submitting the media generation task failed: Kie did not return a task ID.",
+            )
         return task_id
 
     async def get_task_details(self, *, task_id: str) -> dict[str, Any]:
@@ -64,8 +80,15 @@ class KieProvider:
                 )
                 response.raise_for_status()
                 return response.json()
+        except httpx.HTTPStatusError as exc:
+            raise exceptions.MediaGenerationSubmissionFailed(
+                message=self._render_http_error_message("Querying the media generation task failed.", exc),
+                extra={"status_code": exc.response.status_code},
+            ) from exc
         except (httpx.HTTPError, ValueError) as exc:
-            raise exceptions.MediaGenerationSubmissionFailed() from exc
+            raise exceptions.MediaGenerationSubmissionFailed(
+                message=self._render_generic_error_message("Querying the media generation task failed.", exc),
+            ) from exc
 
     def extract_submit_task_id(self, payload: dict[str, Any]) -> str | None:
         data = payload.get("data")
@@ -77,6 +100,23 @@ class KieProvider:
             if isinstance(candidate, str) and candidate.strip():
                 return candidate.strip()
         return None
+
+    def extract_submit_error(self, payload: dict[str, Any]) -> dict[str, Any] | None:
+        code = payload.get("code")
+        message = payload.get("msg") or payload.get("message")
+
+        if code == 200 and self.extract_submit_task_id(payload):
+            return None
+
+        rendered_message = "Submitting the media generation task failed."
+        if isinstance(message, str) and message.strip():
+            rendered_message = f"Submitting the media generation task failed: {message.strip()}"
+
+        extra: dict[str, Any] = {}
+        if code is not None:
+            extra["provider_code"] = code
+
+        return {"message": rendered_message, "extra": extra}
 
     def extract_callback_task_id(self, payload: dict[str, Any]) -> str | None:
         data = payload.get("data")
@@ -248,3 +288,38 @@ class KieProvider:
                         if isinstance(value, str) and value.strip():
                             return value.strip()
         return None
+
+    def _render_http_error_message(self, prefix: str, exc: httpx.HTTPStatusError) -> str:
+        message = prefix
+        response = exc.response
+
+        if response is not None:
+            content_type = response.headers.get("content-type", "")
+            parsed_message: str | None = None
+
+            if "application/json" in content_type:
+                try:
+                    payload = response.json()
+                except ValueError:
+                    payload = None
+
+                if isinstance(payload, dict):
+                    candidate = payload.get("msg") or payload.get("message") or payload.get("error")
+                    if isinstance(candidate, str) and candidate.strip():
+                        parsed_message = candidate.strip()
+
+            if parsed_message is None:
+                body_text = response.text.strip()
+                if body_text:
+                    parsed_message = body_text[:300]
+
+            if parsed_message:
+                message = f"{prefix} {parsed_message}"
+
+        return message
+
+    def _render_generic_error_message(self, prefix: str, exc: Exception) -> str:
+        rendered = str(exc).strip()
+        if rendered:
+            return f"{prefix} {rendered}"
+        return prefix

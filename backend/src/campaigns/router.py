@@ -7,6 +7,8 @@ from fastapi import APIRouter, status
 
 from src.campaigns.dependencies import campaign_service_dependency
 from src.campaigns.schemas import (
+    CampaignBulkScheduleRequest,
+    CampaignBulkScheduleResponse,
     CampaignCreateRequest,
     CampaignListResponse,
     CampaignMessageResponse,
@@ -16,7 +18,7 @@ from src.campaigns.schemas import (
 from src.content_plans.dependencies import content_plan_service_dependency
 from src.content_plans.schemas import ContentPlanResponse, GeneratePostsFromPlanResponse
 from src.dependencies import current_user_dependency
-from src.posts.dependencies import post_generation_service_dependency
+from src.posts.dependencies import post_generation_service_dependency, post_service_dependency
 
 
 router = APIRouter(prefix="/campaigns", tags=["campaigns"])
@@ -92,3 +94,24 @@ async def generate_posts_from_plan(
     service: post_generation_service_dependency,
 ) -> GeneratePostsFromPlanResponse:
     return await service.generate_posts_from_plan(current_user, campaign_id)
+
+
+@router.post("/{campaign_id}/schedule-posts", response_model=CampaignBulkScheduleResponse)
+async def schedule_campaign_posts(
+    campaign_id: UUID,
+    payload: CampaignBulkScheduleRequest,
+    current_user: current_user_dependency,
+    service: post_service_dependency,
+) -> CampaignBulkScheduleResponse:
+    posts = await service.schedule_campaign_posts(
+        current_user,
+        campaign_id,
+        time_of_day=payload.time_of_day,
+        timezone_name=payload.timezone,
+    )
+    return CampaignBulkScheduleResponse(
+        campaign_id=campaign_id,
+        timezone=payload.timezone,
+        posts_scheduled=len(posts),
+        posts=[service.to_response(post) for post in posts],
+    )

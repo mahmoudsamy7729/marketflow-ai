@@ -1,0 +1,100 @@
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-1512}@db:5432/${POSTGRES_DB:-postiz}
+  SYNC_DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-1512}@db:5432/${POSTGRES_DB:-postiz}
+  TEST_DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD:-1512}@db:5432/${POSTGRES_TEST_DB:-postiz_test}
+  CELERY_BROKER_URL: redis://redis:6379/0
+  CELERY_RESULT_BACKEND: redis://redis:6379/1
+  CELERY_PUBLISH_DUE_POSTS_INTERVAL_SECONDS: ${CELERY_PUBLISH_DUE_POSTS_INTERVAL_SECONDS:-15}
+  CELERY_PUBLISH_DUE_POSTS_BATCH_SIZE: ${CELERY_PUBLISH_DUE_POSTS_BATCH_SIZE:-50}
+  CELERY_PUBLISH_DUE_POSTS_MAX_ROUNDS: ${CELERY_PUBLISH_DUE_POSTS_MAX_ROUNDS:-10}
+  CELERY_PUBLISH_DUE_POSTS_MAX_RUNTIME_SECONDS: ${CELERY_PUBLISH_DUE_POSTS_MAX_RUNTIME_SECONDS:-50}
+  CELERY_WORKER_CONCURRENCY: ${CELERY_WORKER_CONCURRENCY:-4}
+  CELERY_WORKER_PREFETCH_MULTIPLIER: ${CELERY_WORKER_PREFETCH_MULTIPLIER:-1}
+  CELERY_WORKER_MAX_TASKS_PER_CHILD: ${CELERY_WORKER_MAX_TASKS_PER_CHILD:-200}
+  CELERY_TASK_SOFT_TIME_LIMIT_SECONDS: ${CELERY_TASK_SOFT_TIME_LIMIT_SECONDS:-240}
+  CELERY_TASK_TIME_LIMIT_SECONDS: ${CELERY_TASK_TIME_LIMIT_SECONDS:-300}
+
+services:
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: sh -c "uv run --no-sync alembic upgrade head && uv run --no-sync uvicorn main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - ./backend/.env
+    environment:
+      <<: *app-environment
+    volumes:
+      - ./backend:/app
+      - backend_venv:/app/.venv
+
+  db:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-postiz}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-1512}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  pgadmin:
+    image: dpage/pgadmin4
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+
+  celery_worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: sh -c "uv run --no-sync celery -A src.worker:celery_app worker --loglevel=info --concurrency=$${CELERY_WORKER_CONCURRENCY:-4} --prefetch-multiplier=$${CELERY_WORKER_PREFETCH_MULTIPLIER:-1} --max-tasks-per-child=$${CELERY_WORKER_MAX_TASKS_PER_CHILD:-200}"
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - ./backend/.env
+    environment:
+      <<: *app-environment
+    volumes:
+      - ./backend:/app
+      - backend_venv:/app/.venv
+
+  celery_beat:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: sh -c "uv run --no-sync celery -A src.worker:celery_app beat --loglevel=info"
+    depends_on:
+      - db
+      - redis
+    env_file:
+      - ./backend/.env
+    environment:
+      <<: *app-environment
+    volumes:
+      - ./backend:/app
+      - backend_venv:/app/.venv
+
+volumes:
+  pg_data:
+  backend_venv:
+

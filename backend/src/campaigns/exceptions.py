@@ -67,3 +67,23 @@ class CampaignStatusInvalid(AppException):
             status_code=400,
             extra={"status": status},
         )
+
+
+class CampaignScheduleTimeInvalid(AppException):
+    def __init__(self, value: str) -> None:
+        super().__init__(
+            code="campaign_schedule_time_invalid",
+            message="Bulk scheduling requires a valid local time in HH:MM or HH:MM:SS format.",
+            status_code=400,
+            extra={"time_of_day": value},
+        )
+
+
+class CampaignScheduleTimezoneInvalid(AppException):
+    def __init__(self, value: str) -> None:
+        super().__init__(
+            code="campaign_schedule_timezone_invalid",
+            message="Bulk scheduling requires a valid IANA timezone.",
+            status_code=400,
+            extra={"timezone": value},
+        )

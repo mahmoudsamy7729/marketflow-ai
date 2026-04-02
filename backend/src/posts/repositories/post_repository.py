@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -135,6 +135,42 @@ class PostRepository:
         result = await self.session.scalars(statement)
         return list(result.unique().all())
 
+    async def list_bulk_schedule_candidates(
+        self,
+        *,
+        user_id: UUID,
+        campaign_id: UUID,
+    ) -> list[Post]:
+        statement = (
+            self._post_statement()
+            .outerjoin(ContentPlanItem, Post.content_plan_item_id == ContentPlanItem.id)
+            .where(
+                Post.user_id == user_id,
+                Post.campaign_id == campaign_id,
+                Post.status == "draft",
+                Post.scheduled_for.is_(None),
+                Post.deleted_at.is_(None),
+            )
+            .order_by(
+                case((Post.content_plan_item_id.is_not(None), 0), else_=1).asc(),
+                func.coalesce(ContentPlanItem.day_number, 2_147_483_647).asc(),
+                func.coalesce(ContentPlanItem.sequence_order, 2_147_483_647).asc(),
+                Post.created_at.asc(),
+            )
+        )
+        result = await self.session.scalars(statement)
+        return list(result.unique().all())
+
+    async def list_campaign_occupied_scheduled_datetimes(self, campaign_id: UUID) -> list[datetime]:
+        statement = select(Post.scheduled_for).where(
+            Post.campaign_id == campaign_id,
+            Post.status.in_(("scheduled", "publishing")),
+            Post.scheduled_for.is_not(None),
+            Post.deleted_at.is_(None),
+        )
+        result = await self.session.scalars(statement)
+        return [value for value in result.all() if value is not None]
+
     async def get_post_by_id_for_user(
         self,
         post_id: UUID,
@@ -193,6 +229,27 @@ class PostRepository:
         await self.session.commit()
         return await self.get_post_by_id_for_user(post.id, post.user_id)
 
+    async def bulk_schedule_posts(
+        self,
+        posts_with_schedule: list[tuple[Post, datetime]],
+    ) -> list[Post]:
+        if not posts_with_schedule:
+            return []
+
+        post_ids: list[UUID] = []
+        for post, scheduled_for in posts_with_schedule:
+            post.status = "scheduled"
+            post.scheduled_for = scheduled_for
+            post.error_message = None
+            post_ids.append(post.id)
+
+        await self.session.commit()
+        statement = self._post_statement().where(Post.id.in_(post_ids))
+        result = await self.session.scalars(statement)
+        fetched_posts = list(result.unique().all())
+        post_map = {post.id: post for post in fetched_posts}
+        return [post_map[post_id] for post_id in post_ids if post_id in post_map]
+
     async def soft_delete_post(self, post: Post) -> Post:
         post.deleted_at = datetime.now(timezone.utc)
         await self.session.commit()
@@ -226,6 +283,41 @@ class PostRepository:
         post.external_post_id = None
         await self.session.commit()
         return await self.get_post_by_id_for_user(post.id, post.user_id)
+
+    async def claim_due_scheduled_posts(
+        self,
+        *,
+        now: datetime,
+        limit: int,
+    ) -> list[Post]:
+        statement = (
+            select(Post)
+            .where(
+                Post.status == "scheduled",
+                Post.scheduled_for.is_not(None),
+                Post.scheduled_for <= now,
+                Post.deleted_at.is_(None),
+            )
+            .order_by(Post.scheduled_for.asc(), Post.created_at.asc())
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        result = await self.session.scalars(statement)
+        posts = list(result.unique().all())
+        post_ids: list[UUID] = []
+        for post in posts:
+            post.status = "publishing"
+            post.error_message = None
+            post_ids.append(post.id)
+
+        if posts:
+            await self.session.commit()
+            refreshed_statement = self._post_statement().where(Post.id.in_(post_ids))
+            refreshed_result = await self.session.scalars(refreshed_statement)
+            refreshed_posts = list(refreshed_result.unique().all())
+            refreshed_map = {post.id: post for post in refreshed_posts}
+            return [refreshed_map[post_id] for post_id in post_ids if post_id in refreshed_map]
+        return posts
 
     async def append_post_images(
         self,

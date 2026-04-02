@@ -31,11 +31,12 @@ class MediaGenerationPromptMissing(AppException):
 
 
 class MediaGenerationSubmissionFailed(AppException):
-    def __init__(self) -> None:
+    def __init__(self, message: str | None = None, extra: dict | None = None) -> None:
         super().__init__(
             code="media_generation_submission_failed",
-            message="Submitting the media generation task failed.",
+            message=message or "Submitting the media generation task failed.",
             status_code=502,
+            extra=extra,
         )
 
 
