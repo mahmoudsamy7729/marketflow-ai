@@ -61,6 +61,48 @@ class PostStatusNotEditable(AppException):
         )
 
 
+class PostScheduleStatusInvalid(AppException):
+    def __init__(self, status: str) -> None:
+        super().__init__(
+            code="post_schedule_status_invalid",
+            message="Only draft and scheduled posts can be scheduled or unscheduled.",
+            status_code=400,
+            extra={"status": status},
+        )
+
+
+class PostScheduleTimezoneRequired(AppException):
+    def __init__(self) -> None:
+        super().__init__(
+            code="post_schedule_timezone_required",
+            message="Scheduled datetimes must include an explicit timezone offset.",
+            status_code=400,
+        )
+
+
+class PostScheduleOutsideCampaignRange(AppException):
+    def __init__(self, scheduled_date: str, start_date: str, end_date: str) -> None:
+        super().__init__(
+            code="post_schedule_outside_campaign_range",
+            message="Scheduled datetime must fall within the campaign date range.",
+            status_code=400,
+            extra={
+                "scheduled_date": scheduled_date,
+                "campaign_start_date": start_date,
+                "campaign_end_date": end_date,
+            },
+        )
+
+
+class PostScheduledStatusRequiresDatetime(AppException):
+    def __init__(self) -> None:
+        super().__init__(
+            code="post_scheduled_status_requires_datetime",
+            message="A scheduled status requires a scheduled datetime.",
+            status_code=400,
+        )
+
+
 class PostPublishNowStatusInvalid(AppException):
     def __init__(self, status: str) -> None:
         super().__init__(
@@ -134,6 +176,15 @@ class PostImageNotFound(AppException):
             code="post_image_not_found",
             message="Post image not found.",
             status_code=404,
+        )
+
+
+class ScheduledPostsPublishFailed(AppException):
+    def __init__(self) -> None:
+        super().__init__(
+            code="scheduled_posts_publish_failed",
+            message="Publishing scheduled posts failed.",
+            status_code=502,
         )
 
 

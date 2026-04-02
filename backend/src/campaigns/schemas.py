@@ -4,6 +4,7 @@ from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from src.posts.schemas import PostResponse
 
 
 class CampaignCreateRequest(BaseModel):
@@ -77,3 +78,20 @@ class CampaignListResponse(BaseModel):
 
 class CampaignMessageResponse(BaseModel):
     message: str
+
+
+class CampaignBulkScheduleRequest(BaseModel):
+    time_of_day: str = Field(min_length=4, max_length=8)
+    timezone: str = Field(min_length=1, max_length=128)
+
+    @field_validator("time_of_day", "timezone")
+    @classmethod
+    def strip_schedule_fields(cls, value: str) -> str:
+        return value.strip()
+
+
+class CampaignBulkScheduleResponse(BaseModel):
+    campaign_id: UUID
+    timezone: str
+    posts_scheduled: int
+    posts: list[PostResponse]

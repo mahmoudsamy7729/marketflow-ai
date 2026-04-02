@@ -77,3 +77,9 @@ class PostListResponse(BaseModel):
 
 class PostMessageResponse(BaseModel):
     message: str
+
+
+class ScheduledPostsPublishResult(BaseModel):
+    claimed: int
+    published: int
+    failed: int

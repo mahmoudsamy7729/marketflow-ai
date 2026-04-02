@@ -11,7 +11,7 @@ from src.database import Base
 
 
 ALLOWED_POST_CHANNELS = ALLOWED_CAMPAIGN_CHANNELS
-ALLOWED_POST_STATUSES = ("draft", "scheduled", "published", "failed")
+ALLOWED_POST_STATUSES = ("draft", "scheduled", "publishing", "published", "failed")
 EDITABLE_POST_STATUSES = ("draft", "scheduled")
 REMOTE_URL_STORAGE_TYPE = "remote_url"
 UPLOADED_FILE_STORAGE_TYPE = "uploaded_file"
