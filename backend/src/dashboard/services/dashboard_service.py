@@ -32,22 +32,32 @@ class DashboardService:
         return DashboardResponse(
             overview=DashboardOverviewResponse(**overview_counts.__dict__),
             connected_channels=[
-                DashboardConnectedChannelResponse(
-                    channel=connection.provider,
-                    status=connection.status,
-                    connected_at=connection.created_at,
-                    account_display_name=(
-                        connection.facebook_details.display_name
-                        if connection.provider == "facebook" and connection.facebook_details is not None
-                        else None
-                    ),
-                    selected_target_name=(
-                        connection.selected_facebook_page.page_name
-                        if connection.provider == "facebook" and connection.selected_facebook_page is not None
-                        else None
-                    ),
-                )
-                for connection in connected_channels
+                *[
+                    DashboardConnectedChannelResponse(
+                        channel=connection.provider,
+                        status=connection.status,
+                        connected_at=connection.created_at,
+                        account_display_name=self._account_display_name(connection),
+                        selected_target_name=self._selected_target_name(connection),
+                    )
+                    for connection in connected_channels
+                ],
+                *[
+                    DashboardConnectedChannelResponse(
+                        channel="instagram",
+                        status="connected",
+                        connected_at=connection.created_at,
+                        account_display_name=connection.selected_facebook_page.instagram_username,
+                        selected_target_name=(
+                            connection.selected_facebook_page.instagram_name
+                            or connection.selected_facebook_page.instagram_username
+                        ),
+                    )
+                    for connection in connected_channels
+                    if connection.provider == "facebook"
+                    and connection.selected_facebook_page is not None
+                    and connection.selected_facebook_page.instagram_account_id
+                ],
             ],
             upcoming_posts=[
                 DashboardUpcomingPostResponse(
@@ -95,8 +105,20 @@ class DashboardService:
             ],
         )
 
-    def _body_preview(self, body: str) -> str:
+    def _body_preview(self, body: str | None) -> str:
+        if not body:
+            return ""
         compact_body = " ".join(body.split())
         if len(compact_body) <= 120:
             return compact_body
         return f"{compact_body[:117]}..."
+
+    def _account_display_name(self, connection) -> str | None:
+        if connection.provider == "facebook" and connection.facebook_details is not None:
+            return connection.facebook_details.display_name
+        return None
+
+    def _selected_target_name(self, connection) -> str | None:
+        if connection.provider == "facebook" and connection.selected_facebook_page is not None:
+            return connection.selected_facebook_page.page_name
+        return None

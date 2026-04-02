@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from secrets import token_urlsafe
@@ -7,7 +7,7 @@ from src.auth.models import User
 from src.channels import exceptions
 from src.channels.providers import FacebookOAuthProvider
 from src.channels.repositories import ChannelRepository
-from src.channels.repositories.channel_repository import FACEBOOK_PROVIDER
+from src.channels.repositories.channel_repository import FACEBOOK_PROVIDER, INSTAGRAM_PROVIDER
 from src.channels.schemas import (
     ChannelSummaryResponse,
     DisconnectChannelResponse,
@@ -16,6 +16,7 @@ from src.channels.schemas import (
     FacebookPageResponse,
     FacebookPagesResponse,
     FacebookProfileResponse,
+    InstagramProfileResponse,
     MyChannelsResponse,
     N8NFacebookPageResponse,
     ResolveFacebookPageRequest,
@@ -58,7 +59,12 @@ class ChannelService:
             if connection.provider != FACEBOOK_PROVIDER or connection.facebook_details is None:
                 continue
 
-            channels.append(self._build_channel_summary(connection))
+            channels.append(self._build_facebook_channel_summary(connection))
+            if (
+                connection.selected_facebook_page is not None
+                and connection.selected_facebook_page.instagram_account_id
+            ):
+                channels.append(self._build_instagram_channel_summary(connection))
 
         return MyChannelsResponse(channels=channels)
 
@@ -83,6 +89,7 @@ class ChannelService:
                     category=page.get("category"),
                     has_access_token=bool(page.get("access_token")),
                     tasks=[str(task) for task in tasks] if isinstance(tasks, list) else [],
+                    instagram_profile=self._build_instagram_profile_from_page(page),
                 )
             )
 
@@ -107,7 +114,7 @@ class ChannelService:
             (
                 page
                 for page in pages_payload
-                if str(page.get("id", "")) == payload.page_id
+                if str(page.get("id", "")).strip() == payload.page_id
             ),
             None,
         )
@@ -120,6 +127,7 @@ class ChannelService:
 
         tasks = matched_page.get("tasks")
         tasks_list = [str(task) for task in tasks] if isinstance(tasks, list) else []
+        instagram_profile = self._build_instagram_profile_from_page(matched_page)
         await self.repository.upsert_selected_facebook_page(
             connection_id=connection.id,
             facebook_page_id=str(matched_page.get("id", "")),
@@ -127,6 +135,12 @@ class ChannelService:
             category=matched_page.get("category"),
             page_access_token=str(page_access_token),
             tasks=",".join(tasks_list) if tasks_list else None,
+            instagram_account_id=instagram_profile.instagram_user_id if instagram_profile else None,
+            instagram_username=instagram_profile.username if instagram_profile else None,
+            instagram_name=instagram_profile.name if instagram_profile else None,
+            instagram_profile_picture_url=(
+                instagram_profile.profile_picture_url if instagram_profile else None
+            ),
         )
 
         return SelectFacebookPageResponse(
@@ -138,6 +152,7 @@ class ChannelService:
                 category=matched_page.get("category"),
                 has_access_token=True,
                 tasks=tasks_list,
+                instagram_profile=instagram_profile,
             ),
         )
 
@@ -156,7 +171,13 @@ class ChannelService:
         if selected_page is None:
             raise exceptions.FacebookSelectedPageNotFound(FACEBOOK_PROVIDER)
 
-        tasks = self._deserialize_tasks(selected_page.tasks)
+        tasks = []
+        if selected_page.tasks:
+            tasks = [
+                task.strip()
+                for task in selected_page.tasks.split(",")
+                if task.strip()
+            ]
 
         return ResolveFacebookPageResponse(
             provider=FACEBOOK_PROVIDER,
@@ -246,39 +267,78 @@ class ChannelService:
             message="Facebook channel disconnected successfully.",
         )
 
-    def _build_channel_summary(self, connection) -> ChannelSummaryResponse:
+    def _build_facebook_channel_summary(self, connection) -> ChannelSummaryResponse:
         details = connection.facebook_details
-        selected_page = connection.selected_facebook_page
+        granted_scopes = []
+        if details.granted_scopes:
+            granted_scopes = [
+                scope.strip()
+                for scope in details.granted_scopes.split(",")
+                if scope.strip()
+            ]
 
         return ChannelSummaryResponse(
             connection_id=connection.id,
-            provider=connection.provider,
+            provider=FACEBOOK_PROVIDER,
             status=connection.status,
             expires_at=details.expires_at,
-            granted_scopes=self._deserialize_tasks(details.granted_scopes),
+            granted_scopes=granted_scopes,
             profile=FacebookProfileResponse(
                 facebook_user_id=details.facebook_user_id,
                 display_name=details.display_name,
             ),
-            selected_page=(
-                SelectedFacebookPageResponse(
-                    id=selected_page.facebook_page_id,
-                    name=selected_page.page_name,
-                    category=selected_page.category,
-                    has_access_token=bool(selected_page.page_access_token),
-                    tasks=self._deserialize_tasks(selected_page.tasks),
-                )
-                if selected_page is not None
+            selected_target_id=(
+                connection.selected_facebook_page.facebook_page_id
+                if connection.selected_facebook_page is not None
+                else None
+            ),
+            selected_target_name=(
+                connection.selected_facebook_page.page_name
+                if connection.selected_facebook_page is not None
                 else None
             ),
         )
 
-    def _deserialize_tasks(self, value: str | None) -> list[str]:
-        if not value:
-            return []
+    def _build_instagram_channel_summary(self, connection) -> ChannelSummaryResponse:
+        details = connection.facebook_details
+        selected_page = connection.selected_facebook_page
+        granted_scopes = []
+        if details.granted_scopes:
+            granted_scopes = [
+                scope.strip()
+                for scope in details.granted_scopes.split(",")
+                if scope.strip()
+            ]
 
-        return [
-            item.strip()
-            for item in value.split(",")
-            if item.strip()
-        ]
+        return ChannelSummaryResponse(
+            connection_id=connection.id,
+            provider=INSTAGRAM_PROVIDER,
+            status="connected",
+            expires_at=details.expires_at,
+            granted_scopes=granted_scopes,
+            instagram_profile=InstagramProfileResponse(
+                instagram_user_id=selected_page.instagram_account_id,
+                username=selected_page.instagram_username,
+                name=selected_page.instagram_name,
+                profile_picture_url=selected_page.instagram_profile_picture_url,
+            ),
+            selected_target_id=selected_page.instagram_account_id,
+            selected_target_name=selected_page.instagram_name or selected_page.instagram_username,
+        )
+
+    def _build_instagram_profile_from_page(self, page: dict) -> InstagramProfileResponse | None:
+        instagram_account = page.get("instagram_business_account")
+        if not isinstance(instagram_account, dict):
+            return None
+
+        instagram_user_id = str(instagram_account.get("id", "")).strip()
+        if not instagram_user_id:
+            return None
+
+        username = instagram_account.get("username")
+        return InstagramProfileResponse(
+            instagram_user_id=instagram_user_id,
+            username=str(username).strip() if username is not None else None,
+            name=instagram_account.get("name"),
+            profile_picture_url=instagram_account.get("profile_picture_url"),
+        )

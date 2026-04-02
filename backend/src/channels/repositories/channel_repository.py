@@ -16,6 +16,7 @@ from src.channels.models import (
 
 
 FACEBOOK_PROVIDER = "facebook"
+INSTAGRAM_PROVIDER = "instagram"
 CONNECTED_STATUS = "connected"
 DISCONNECTED_STATUS = "disconnected"
 
@@ -96,13 +97,26 @@ class ChannelRepository:
         return list(result.all())
 
     async def list_connected_providers_by_user(self, user_id: UUID) -> set[str]:
-        statement = select(ChannelConnection.provider).where(
-            ChannelConnection.user_id == user_id,
-            ChannelConnection.status == CONNECTED_STATUS,
-            ChannelConnection.deleted_at.is_(None),
+        statement = (
+            select(ChannelConnection)
+            .options(selectinload(ChannelConnection.selected_facebook_page))
+            .where(
+                ChannelConnection.user_id == user_id,
+                ChannelConnection.status == CONNECTED_STATUS,
+                ChannelConnection.deleted_at.is_(None),
+            )
         )
         result = await self.session.scalars(statement)
-        return {provider for provider in result.all()}
+        connections = list(result.all())
+        providers = {connection.provider for connection in connections}
+        if any(
+            connection.provider == FACEBOOK_PROVIDER
+            and connection.selected_facebook_page is not None
+            and connection.selected_facebook_page.instagram_account_id
+            for connection in connections
+        ):
+            providers.add(INSTAGRAM_PROVIDER)
+        return providers
 
     async def upsert_facebook_connection(
         self,
@@ -185,6 +199,10 @@ class ChannelRepository:
         category: str | None,
         page_access_token: str,
         tasks: str | None,
+        instagram_account_id: str | None,
+        instagram_username: str | None,
+        instagram_name: str | None,
+        instagram_profile_picture_url: str | None,
     ) -> FacebookSelectedPage:
         selected_page = await self.session.get(FacebookSelectedPage, connection_id)
         if selected_page is None:
@@ -195,6 +213,10 @@ class ChannelRepository:
                 category=category,
                 page_access_token=page_access_token,
                 tasks=tasks,
+                instagram_account_id=instagram_account_id,
+                instagram_username=instagram_username,
+                instagram_name=instagram_name,
+                instagram_profile_picture_url=instagram_profile_picture_url,
             )
             self.session.add(selected_page)
         else:
@@ -203,6 +225,10 @@ class ChannelRepository:
             selected_page.category = category
             selected_page.page_access_token = page_access_token
             selected_page.tasks = tasks
+            selected_page.instagram_account_id = instagram_account_id
+            selected_page.instagram_username = instagram_username
+            selected_page.instagram_name = instagram_name
+            selected_page.instagram_profile_picture_url = instagram_profile_picture_url
 
         await self.session.commit()
         await self.session.refresh(selected_page)

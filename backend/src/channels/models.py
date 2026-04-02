@@ -47,8 +47,6 @@ class ChannelConnection(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
-
-
 class FacebookConnectionDetails(Base):
     __tablename__ = "facebook_connection_details"
 
@@ -91,6 +89,10 @@ class FacebookSelectedPage(Base):
     category: Mapped[str | None] = mapped_column(String(255), nullable=True)
     page_access_token: Mapped[str] = mapped_column(Text, nullable=False)
     tasks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    instagram_account_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    instagram_username: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    instagram_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    instagram_profile_picture_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

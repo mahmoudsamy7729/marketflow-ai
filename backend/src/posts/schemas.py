@@ -9,13 +9,15 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 class PostCreateRequest(BaseModel):
     campaign_id: UUID
     channel: str
-    body: str = Field(min_length=1)
+    body: str | None = Field(default=None, min_length=1)
     image_urls: list[HttpUrl] | None = None
     scheduled_for: datetime | None = None
 
     @field_validator("channel", "body")
     @classmethod
-    def strip_required_text(cls, value: str) -> str:
+    def strip_required_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         return value.strip()
 
 
@@ -56,7 +58,7 @@ class PostResponse(BaseModel):
     campaign_id: UUID
     content_plan_item_id: UUID | None
     channel: str
-    body: str
+    body: str | None
     image_prompt: str | None
     status: str
     scheduled_for: datetime | None

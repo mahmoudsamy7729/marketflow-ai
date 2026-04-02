@@ -13,6 +13,7 @@ from src.content_plans.dependencies import get_content_plan_repository
 from src.content_plans.repositories import ContentPlanRepository
 from src.database import db_dependency
 from src.posts import exceptions
+from src.posts.publishers import FacebookPostPublisher, InstagramPostPublisher
 from src.posts.repositories import PostRepository
 from src.posts.services import PostGenerationService, PostService
 
@@ -35,7 +36,15 @@ def get_post_service(
     channel_repository: Annotated[ChannelRepository, Depends(get_channel_repository)],
     facebook_provider: Annotated[FacebookOAuthProvider, Depends(get_facebook_provider)],
 ) -> PostService:
-    return PostService(repository, channel_repository, facebook_provider)
+    return PostService(
+        repository,
+        channel_repository,
+        facebook_provider,
+        publishers={
+            "facebook": FacebookPostPublisher(facebook_provider),
+            "instagram": InstagramPostPublisher(facebook_provider),
+        },
+    )
 
 
 def get_post_generation_service(

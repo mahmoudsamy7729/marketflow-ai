@@ -75,7 +75,7 @@ class PostPublishNowChannelUnsupported(AppException):
     def __init__(self, channel: str) -> None:
         super().__init__(
             code="post_publish_now_channel_unsupported",
-            message="Publish now is only supported for Facebook posts in v1.",
+            message="Publish now is not supported for this post channel.",
             status_code=400,
             extra={"channel": channel},
         )
@@ -87,6 +87,44 @@ class PostPublishNowFailed(AppException):
             code="post_publish_now_failed",
             message="Publishing the post now failed.",
             status_code=502,
+        )
+
+
+class PostInstagramTargetNotConfigured(AppException):
+    def __init__(self) -> None:
+        super().__init__(
+            code="post_instagram_target_not_configured",
+            message="No linked Instagram professional account was found on the selected Facebook page.",
+            status_code=400,
+        )
+
+
+class PostInstagramMediaRequired(AppException):
+    def __init__(self) -> None:
+        super().__init__(
+            code="post_instagram_media_required",
+            message="Instagram posts require media.",
+            status_code=400,
+        )
+
+
+class PostInstagramMediaCountUnsupported(AppException):
+    def __init__(self, count: int) -> None:
+        super().__init__(
+            code="post_instagram_media_count_unsupported",
+            message="Instagram publish now supports exactly one image in v1.",
+            status_code=400,
+            extra={"image_count": count},
+        )
+
+
+class PostInstagramMediaSourceUnsupported(AppException):
+    def __init__(self, storage_type: str) -> None:
+        super().__init__(
+            code="post_instagram_media_source_unsupported",
+            message="Instagram publish now only supports remote image URLs in v1.",
+            status_code=400,
+            extra={"storage_type": storage_type},
         )
 
 

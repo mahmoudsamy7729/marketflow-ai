@@ -42,7 +42,7 @@ class PostRepository:
         campaign_id: UUID,
         content_plan_item_id: UUID | None,
         channel: str,
-        body: str,
+        body: str | None,
         image_prompt: str | None,
         status: str,
         scheduled_for: datetime | None,
@@ -147,6 +147,10 @@ class PostRepository:
         )
         return await self.session.scalar(statement)
 
+    async def get_post_by_id(self, post_id: UUID) -> Post | None:
+        statement = self._post_statement().where(Post.id == post_id)
+        return await self.session.scalar(statement)
+
     async def update_post(
         self,
         post: Post,
@@ -161,7 +165,7 @@ class PostRepository:
         replace_remote_image_urls: bool,
     ) -> Post:
         if update_body:
-            post.body = body or post.body
+            post.body = body
         if update_scheduled_for:
             post.scheduled_for = scheduled_for
         if update_status:
@@ -245,6 +249,33 @@ class PostRepository:
 
         await self.session.commit()
         return await self.get_post_by_id_for_user(post.id, post.user_id)
+
+    async def append_post_images_if_missing(
+        self,
+        post: Post,
+        images: list[dict[str, str | None]],
+    ) -> Post:
+        existing_keys = {
+            (
+                image.storage_type,
+                image.file_url,
+                image.file_path,
+            )
+            for image in post.images
+        }
+        filtered_images = [
+            image
+            for image in images
+            if (
+                str(image["storage_type"]),
+                str(image["file_url"]),
+                image.get("file_path"),
+            )
+            not in existing_keys
+        ]
+        if not filtered_images:
+            return await self.get_post_by_id(post.id)
+        return await self.append_post_images(post, filtered_images)
 
     async def get_post_image_for_post(
         self,
