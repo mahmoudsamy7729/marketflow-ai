@@ -45,15 +45,11 @@ const telemetryRows = [
 const rightRailPoints = [
   {
     label: "Secure access",
-    body: "Auth is the gate before campaign architecture, generated plans, and publishing actions become live.",
+    body: "Auth unlocks campaign control, queue state, and publishing actions.",
   },
   {
-    label: "Operational continuity",
-    body: "The same workspace carries company identity, cadence setup, channel state, and content execution.",
-  },
-  {
-    label: "Built for lean teams",
-    body: "No separate planning, writing, and publishing silos. One entry point, one operating layer.",
+    label: "One workspace",
+    body: "Company identity, channel state, and content execution stay in one operating layer.",
   },
 ] as const;
 
@@ -199,8 +195,7 @@ export function AuthPage({ mode }: AuthPageProps) {
         <div className="auth-visual-copy">
           <p className="auth-visual-kicker">System access for the automation layer</p>
           <h2>
-            Enter the workspace where campaigns, content, and delivery stay in
-            the same operational frame.
+            Enter the workspace where campaigns and delivery stay in the same frame.
           </h2>
 
           <div className="auth-visual-points">
@@ -217,8 +212,8 @@ export function AuthPage({ mode }: AuthPageProps) {
             <strong>{mode === "login" ? "Awaiting credential verification" : "Workspace profile ready for creation"}</strong>
             <span>
               {mode === "login"
-                ? "Sign in to resume active campaigns, planned posts, and publishing controls."
-                : "Create the company account first, then connect channels and start campaign orchestration."}
+                ? "Resume active campaigns and publishing controls."
+                : "Create the company account, then connect channels and begin orchestration."}
             </span>
           </div>
         </div>
