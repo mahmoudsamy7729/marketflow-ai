@@ -12,6 +12,7 @@ import src.auth.models  # noqa: F401
 import src.campaigns.models  # noqa: F401
 import src.channels.models  # noqa: F401
 import src.content_plans.models  # noqa: F401
+import src.media_generation.models  # noqa: F401
 import src.posts.models  # noqa: F401
 
 

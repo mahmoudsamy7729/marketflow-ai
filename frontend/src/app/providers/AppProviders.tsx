@@ -1,13 +1,10 @@
-﻿import type { PropsWithChildren } from "react";
+import { type ReactNode } from "react";
+import { AuthProvider } from "@/features/auth/lib/AuthContext";
 
-import { AuthProvider } from "@/app/providers/AuthProvider";
-import { QueryProvider } from "@/app/providers/QueryProvider";
-
-export function AppProviders({ children }: PropsWithChildren) {
-  return (
-    <QueryProvider>
-      <AuthProvider>{children}</AuthProvider>
-    </QueryProvider>
-  );
+interface AppProvidersProps {
+  children: ReactNode;
 }
 
+export function AppProviders({ children }: AppProvidersProps) {
+  return <AuthProvider>{children}</AuthProvider>;
+}

@@ -1,23 +1,28 @@
-﻿export interface User {
+export interface User {
   id: string;
   email: string;
-  companyName: string;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string | null;
+  company_name: string;
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
 }
 
 export interface AuthSession {
-  accessToken: string;
+  access_token: string;
   user: User;
 }
 
-export interface LoginInput {
+export interface LoginRequest {
   email: string;
   password: string;
 }
 
-export interface RegisterInput extends LoginInput {
-  companyName: string;
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  company_name: string;
 }
 
+export interface MessageResponse {
+  message: string;
+}

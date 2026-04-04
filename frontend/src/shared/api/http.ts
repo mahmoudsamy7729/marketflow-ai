@@ -1,89 +1,77 @@
-﻿import { getAccessToken } from "@/features/auth/lib/session";
-import { env } from "@/shared/config/env";
+const API_BASE_URL = "http://localhost:8000/api";
 
-type PrimitiveBody = BodyInit | null | undefined;
+let authToken: string | null = null;
 
-interface BackendErrorPayload {
-  error?: {
-    code?: string;
-    message?: string;
-    extra?: Record<string, unknown>;
+export function setAuthToken(token: string | null): void {
+  authToken = token;
+}
+
+export function getAuthToken(): string | null {
+  return authToken;
+}
+
+interface RequestOptions {
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  body?: unknown;
+}
+
+interface ApiError {
+  code: string;
+  message: string;
+  extra?: Record<string, unknown>;
+}
+
+export class HttpError extends Error {
+  status: number;
+  error: ApiError | null;
+
+  constructor(status: number, error: ApiError | null) {
+    super(error?.message || `HTTP Error: ${status}`);
+    this.name = "HttpError";
+    this.status = status;
+    this.error = error;
+  }
+}
+
+async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  const { method = "GET", body } = options;
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
   };
-}
 
-interface RequestOptions extends Omit<RequestInit, "body"> {
-  auth?: boolean;
-  body?: PrimitiveBody | object;
-}
-
-export class ApiError extends Error {
-  constructor(
-    message: string,
-    readonly status: number,
-    readonly code: string,
-    readonly extra?: Record<string, unknown>,
-  ) {
-    super(message);
-    this.name = "ApiError";
-  }
-}
-
-function isBodyInit(value: unknown): value is BodyInit {
-  return (
-    value instanceof FormData ||
-    value instanceof Blob ||
-    value instanceof URLSearchParams ||
-    typeof value === "string" ||
-    value instanceof ArrayBuffer ||
-    ArrayBuffer.isView(value)
-  );
-}
-
-export async function apiRequest<T>(
-  path: string,
-  options: RequestOptions = {},
-): Promise<T> {
-  const { auth = false, body, headers, ...requestInit } = options;
-  const requestHeaders = new Headers(headers);
-
-  if (auth) {
-    const accessToken = getAccessToken();
-    if (accessToken) {
-      requestHeaders.set("Authorization", `Bearer ${accessToken}`);
-    }
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
   }
 
-  let requestBody: BodyInit | undefined;
-  if (body !== undefined && body !== null) {
-    if (isBodyInit(body)) {
-      requestBody = body;
-    } else {
-      requestHeaders.set("Content-Type", "application/json");
-      requestBody = JSON.stringify(body);
-    }
-  }
-
-  const response = await fetch(`${env.apiBaseUrl}${path}`, {
-    ...requestInit,
-    headers: requestHeaders,
-    body: requestBody,
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    method,
+    headers,
+    credentials: "include",
+    body: body ? JSON.stringify(body) : undefined,
   });
 
-  const contentType = response.headers.get("content-type") ?? "";
-  const hasJsonBody = contentType.includes("application/json");
-  const responsePayload = hasJsonBody
-    ? ((await response.json()) as BackendErrorPayload | T)
-    : null;
-
   if (!response.ok) {
-    const errorPayload = responsePayload as BackendErrorPayload | null;
-    throw new ApiError(
-      errorPayload?.error?.message ?? "The request failed.",
-      response.status,
-      errorPayload?.error?.code ?? "request_failed",
-      errorPayload?.error?.extra,
-    );
+    let error: ApiError | null = null;
+    try {
+      const errorBody = await response.json();
+      error = errorBody.error || null;
+    } catch {
+      // Response body is not JSON
+    }
+    throw new HttpError(response.status, error);
   }
 
-  return responsePayload as T;
+  return response.json();
 }
+
+export const http = {
+  get: <T>(endpoint: string): Promise<T> => request<T>(endpoint, { method: "GET" }),
+  post: <T>(endpoint: string, body?: unknown): Promise<T> =>
+    request<T>(endpoint, { method: "POST", body }),
+  put: <T>(endpoint: string, body?: unknown): Promise<T> =>
+    request<T>(endpoint, { method: "PUT", body }),
+  patch: <T>(endpoint: string, body?: unknown): Promise<T> =>
+    request<T>(endpoint, { method: "PATCH", body }),
+  delete: <T>(endpoint: string): Promise<T> => request<T>(endpoint, { method: "DELETE" }),
+};

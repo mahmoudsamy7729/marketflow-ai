@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from typing import Annotated
 from urllib.parse import urlencode
@@ -6,6 +6,8 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Query
 from fastapi.responses import RedirectResponse
 
+from src.common.exceptions import AppException
+from src.config import settings
 from src.channels.dependencies import channel_service_dependency, n8n_api_key_dependency
 from src.channels.schemas import (
     DisconnectChannelResponse,
@@ -17,8 +19,6 @@ from src.channels.schemas import (
     SelectFacebookPageRequest,
     SelectFacebookPageResponse,
 )
-from src.common.exceptions import AppException
-from src.config import settings
 from src.dependencies import current_user_dependency
 
 
@@ -39,24 +39,37 @@ async def facebook_callback(
     state: Annotated[str, Query(min_length=1)],
     service: channel_service_dependency,
 ) -> RedirectResponse:
+    callback_base_url = f"{settings.frontend_url.rstrip('/')}/dashboard/channels/callback"
+
     try:
-        callback_response = await service.handle_facebook_callback(code=code, state=state)
-        return RedirectResponse(
-            url=_build_callback_redirect_url(
-                provider=callback_response.provider,
-                status="connected",
-            ),
-            status_code=302,
+        result = await service.handle_facebook_callback(code=code, state=state)
+        query = urlencode(
+            {
+                "provider": result.provider,
+                "status": "success",
+                "message": "Facebook channel connected successfully.",
+            }
         )
     except AppException as exc:
-        return RedirectResponse(
-            url=_build_callback_redirect_url(
-                provider="facebook",
-                status="error",
-                code=exc.code,
-            ),
-            status_code=302,
+        query = urlencode(
+            {
+                "provider": "facebook",
+                "status": "error",
+                "code": exc.code,
+                "message": exc.message,
+            }
         )
+    except Exception:
+        query = urlencode(
+            {
+                "provider": "facebook",
+                "status": "error",
+                "code": "facebook_callback_failed",
+                "message": "Facebook connection failed.",
+            }
+        )
+
+    return RedirectResponse(url=f"{callback_base_url}?{query}", status_code=303)
 
 
 @router.get("/me", response_model=MyChannelsResponse)
@@ -99,18 +112,3 @@ async def resolve_facebook_page_for_n8n(
     service: channel_service_dependency,
 ) -> ResolveFacebookPageResponse:
     return await service.resolve_facebook_page_for_n8n(payload)
-
-
-def _build_callback_redirect_url(
-    provider: str,
-    status: str,
-    code: str | None = None,
-) -> str:
-    query_params = {
-        "provider": provider,
-        "status": status,
-    }
-    if code:
-        query_params["code"] = code
-
-    return f"{settings.frontend_url}/channels?{urlencode(query_params)}"

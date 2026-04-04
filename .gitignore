@@ -1,4 +1,4 @@
-﻿# Python-generated files
+# Python-generated files
 __pycache__/
 *.py[oc]
 build/
@@ -12,14 +12,16 @@ wheels/
 # Local environment files
 .env
 
+.claude
+
 # User uploads
 uploads/
 
-# Local temp/output directories
-tmp/
-output/
+# Local runtime output
+backend/tmp/
+backend/output/
+celerybeat-schedule
 
-# Node dependencies
-node_modules/
-.vite/
 
+frontend/node_modules/
+frontend/dist/

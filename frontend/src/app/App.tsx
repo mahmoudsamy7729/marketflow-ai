@@ -1,17 +1,28 @@
-﻿import { RouterProvider } from "react-router-dom";
-
 import "@/app/styles.css";
 
-import { AppProviders } from "@/app/providers/AppProviders";
-import { createAppRouter } from "@/app/router/router";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 
-const router = createAppRouter();
+import { AuthPage } from "@/app/AuthPage";
+import { LandingPage } from "@/app/LandingPage";
+import { AppProviders } from "@/app/providers/AppProviders";
 
 export function App() {
   return (
-    <AppProviders>
-      <RouterProvider router={router} />
-    </AppProviders>
+    <BrowserRouter>
+      <AppProviders>
+        <div className="page-shell">
+          <div className="ambient ambient-left" />
+          <div className="ambient ambient-right" />
+          <div className="grain" />
+
+          <Routes>
+            <Route element={<LandingPage />} path="/" />
+            <Route element={<AuthPage mode="login" />} path="/login" />
+            <Route element={<AuthPage mode="register" />} path="/register" />
+            <Route element={<Navigate replace to="/" />} path="*" />
+          </Routes>
+        </div>
+      </AppProviders>
+    </BrowserRouter>
   );
 }
-

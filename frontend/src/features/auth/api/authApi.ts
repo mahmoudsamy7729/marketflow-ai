@@ -1,85 +1,31 @@
-﻿import { apiRequest } from "@/shared/api/http";
+import type { AuthSession, LoginRequest, RegisterRequest, User, MessageResponse } from "../types/auth";
+import { http } from "@/shared/api/http";
+import { setAuthToken } from "@/shared/api/http";
 
-import type { AuthSession, LoginInput, RegisterInput, User } from "@/features/auth/types/auth";
-
-interface UserDto {
-  id: string;
-  email: string;
-  company_name: string;
-  created_at: string;
-  updated_at: string;
-  deleted_at: string | null;
+export async function register(payload: RegisterRequest): Promise<AuthSession> {
+  const response = await http.post<AuthSession>("/auth/register", payload);
+  setAuthToken(response.access_token);
+  return response;
 }
 
-interface AuthSessionDto {
-  access_token: string;
-  user: UserDto;
+export async function login(payload: LoginRequest): Promise<AuthSession> {
+  const response = await http.post<AuthSession>("/auth/login", payload);
+  setAuthToken(response.access_token);
+  return response;
 }
 
-interface MessageResponseDto {
-  message: string;
+export async function logout(): Promise<MessageResponse> {
+  const response = await http.post<MessageResponse>("/auth/logout");
+  setAuthToken(null);
+  return response;
 }
 
-function mapUser(user: UserDto): User {
-  return {
-    id: user.id,
-    email: user.email,
-    companyName: user.company_name,
-    createdAt: user.created_at,
-    updatedAt: user.updated_at,
-    deletedAt: user.deleted_at,
-  };
+export async function getMe(): Promise<User> {
+  return http.get<User>("/auth/me");
 }
 
-function mapSession(session: AuthSessionDto): AuthSession {
-  return {
-    accessToken: session.access_token,
-    user: mapUser(session.user),
-  };
+export async function refreshSession(): Promise<AuthSession> {
+  const response = await http.post<AuthSession>("/auth/refresh");
+  setAuthToken(response.access_token);
+  return response;
 }
-
-export async function loginUser(payload: LoginInput) {
-  const response = await apiRequest<AuthSessionDto>("/api/auth/login", {
-    method: "POST",
-    body: payload,
-    credentials: "include",
-  });
-
-  return mapSession(response);
-}
-
-export async function registerUser(payload: RegisterInput) {
-  const response = await apiRequest<AuthSessionDto>("/api/auth/register", {
-    method: "POST",
-    body: payload,
-    credentials: "include",
-  });
-
-  return mapSession(response);
-}
-
-export async function refreshSession() {
-  const response = await apiRequest<AuthSessionDto>("/api/auth/refresh", {
-    method: "POST",
-    credentials: "include",
-  });
-
-  return mapSession(response);
-}
-
-export async function getCurrentUser() {
-  const response = await apiRequest<UserDto>("/api/auth/me", {
-    method: "GET",
-    auth: true,
-  });
-
-  return mapUser(response);
-}
-
-export async function logoutUser() {
-  return apiRequest<MessageResponseDto>("/api/auth/logout", {
-    method: "POST",
-    credentials: "include",
-  });
-}
-
