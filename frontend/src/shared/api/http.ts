@@ -1,4 +1,5 @@
-const API_BASE_URL = "http://localhost:8000/api";
+export const API_ORIGIN = "http://localhost:8000";
+const API_BASE_URL = `${API_ORIGIN}/api`;
 
 let authToken: string | null = null;
 
