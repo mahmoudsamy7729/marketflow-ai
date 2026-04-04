@@ -76,7 +76,7 @@ export function AuthPage({ mode }: AuthPageProps) {
         const companyName = formData.get("companyName") as string;
         await register(email, password, companyName);
       }
-      navigate("/");
+      navigate("/dashboard");
     } catch (err) {
       if (err instanceof HttpError && err.error?.message) {
         setError(err.error.message);

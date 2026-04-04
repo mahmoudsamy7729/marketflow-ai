@@ -1,4 +1,7 @@
-import { Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+
+import { useAuth } from "@/features/auth/hooks/useAuth";
 
 const workflowSteps = [
   {
@@ -73,6 +76,31 @@ const proofPoints = [
 ] as const;
 
 export function LandingPage() {
+  const { isAuthenticated, isLoading, logout, user } = useAuth();
+  const navigate = useNavigate();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handlePointerDown);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, []);
+
+  async function handleLogout() {
+    setIsMenuOpen(false);
+    await logout();
+    navigate("/");
+  }
+
   return (
     <>
       <nav className="topbar">
@@ -89,12 +117,48 @@ export function LandingPage() {
           </div>
 
           <div className="topbar-actions">
-            <Link className="topbar-auth-link" to="/login">
-              Sign in
-            </Link>
-            <Link className="button button-secondary button-small" to="/register">
-              Create account
-            </Link>
+            {isLoading ? null : isAuthenticated ? (
+              <div className="topbar-user-menu" ref={menuRef}>
+                <button
+                  aria-expanded={isMenuOpen}
+                  aria-haspopup="menu"
+                  className="topbar-user-trigger"
+                  onClick={() => setIsMenuOpen((current) => !current)}
+                  type="button"
+                >
+                  <span className="topbar-user-company">{user?.company_name ?? "Workspace"}</span>
+                  <span className="topbar-user-caret">{isMenuOpen ? "−" : "+"}</span>
+                </button>
+
+                {isMenuOpen ? (
+                  <div className="topbar-user-dropdown" role="menu">
+                    <Link
+                      className="topbar-user-item"
+                      onClick={() => setIsMenuOpen(false)}
+                      to="/dashboard"
+                    >
+                      Dashboard
+                    </Link>
+                    <button
+                      className="topbar-user-item"
+                      onClick={() => void handleLogout()}
+                      type="button"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <Link className="topbar-auth-link" to="/login">
+                  Sign in
+                </Link>
+                <Link className="button button-secondary button-small" to="/register">
+                  Create account
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </nav>
