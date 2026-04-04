@@ -4,6 +4,8 @@ from fastapi import FastAPI, Request, APIRouter
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from fastapi.middleware.cors import CORSMiddleware
+
 from src.auth.router import router as auth_router
 from src.campaigns.router import router as campaigns_router
 from src.channels.router import router as channels_router
@@ -16,6 +18,18 @@ from src.posts.router import router as posts_router
 
 
 app = FastAPI(title=settings.app_name, debug=settings.app_debug)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        settings.frontend_url, 
+        "http://localhost:5173",
+        "http://[IP_ADDRESS]",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 post_upload_root = Path(settings.post_upload_dir)
 if not post_upload_root.is_absolute():
