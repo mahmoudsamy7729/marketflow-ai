@@ -2,6 +2,8 @@ export const API_ORIGIN = "http://localhost:8000";
 const API_BASE_URL = `${API_ORIGIN}/api`;
 
 let authToken: string | null = null;
+let isRefreshing = false;
+let refreshPromise: Promise<void> | null = null;
 
 export function setAuthToken(token: string | null): void {
   authToken = token;
@@ -52,6 +54,11 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     body: body ? JSON.stringify(body) : undefined,
   });
 
+  if (response.status === 401 && !isRefreshing) {
+    await refreshAccessToken();
+    return request(endpoint, options);
+  }
+
   if (!response.ok) {
     let error: ApiError | null = null;
     try {
@@ -64,6 +71,42 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   }
 
   return response.json();
+}
+
+async function refreshAccessToken(): Promise<void> {
+  if (isRefreshing) {
+    return refreshPromise ?? undefined;
+  }
+
+  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        authToken = data.access_token;
+        // Also update localStorage for persistence
+        const { setToken } = await import("./session");
+        setToken(data.access_token);
+      } else {
+        const { clearToken } = await import("./session");
+        clearToken();
+        authToken = null;
+        throw new HttpError(401, { code: "TOKEN_EXPIRED", message: "Session expired" });
+      }
+    } catch {
+      // If refresh fails, re-throw the error
+      throw new HttpError(401, { code: "TOKEN_EXPIRED", message: "Session expired" });
+    } finally {
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  })();
+
+  await refreshPromise;
 }
 
 export const http = {
