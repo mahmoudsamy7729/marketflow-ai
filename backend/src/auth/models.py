@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, String, Uuid, func
+from sqlalchemy import Boolean, DateTime, String, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.database import Base
@@ -21,6 +21,7 @@ class User(Base):
     )
     company_name: Mapped[str] = mapped_column(String(255), nullable=False)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

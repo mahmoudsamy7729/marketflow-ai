@@ -8,6 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 
 from src.auth.exceptions import (
+    AdminPrivilegesRequired,
     AuthenticationRequired,
     InvalidTokenPayload,
     UserDeleted,
@@ -50,3 +51,14 @@ async def get_current_user(
 current_user_dependency = Annotated[User, Depends(get_current_user)]
 user_dependency = current_user_dependency
 active_user_dep = current_user_dependency
+
+
+def get_current_admin_user(
+    current_user: current_user_dependency,
+) -> User:
+    if not current_user.is_admin:
+        raise AdminPrivilegesRequired()
+    return current_user
+
+
+current_admin_dependency = Annotated[User, Depends(get_current_admin_user)]

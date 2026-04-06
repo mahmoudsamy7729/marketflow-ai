@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth.models import User
@@ -40,16 +40,26 @@ class UserRepository:
         email: str,
         company_name: str,
         hashed_password: str,
+        is_admin: bool = False,
     ) -> User:
         user = User(
             email=email,
             company_name=company_name,
             hashed_password=hashed_password,
+            is_admin=is_admin,
         )
         self.session.add(user)
         await self.session.commit()
         await self.session.refresh(user)
         return user
+
+    async def has_any_admin(self) -> bool:
+        statement = select(func.count()).select_from(User).where(
+            User.deleted_at.is_(None),
+            User.is_admin.is_(True),
+        )
+        count = await self.session.scalar(statement)
+        return bool(count)
 
     async def soft_delete(self, user: User) -> User:
         user.deleted_at = datetime.now(timezone.utc)
