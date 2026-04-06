@@ -6,6 +6,8 @@ from fastapi.staticfiles import StaticFiles
 
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.ai_settings.router import admin_router as admin_ai_router
+from src.ai_settings.router import user_router as user_ai_settings_router
 from src.auth.router import router as auth_router
 from src.campaigns.router import router as campaigns_router
 from src.channels.router import router as channels_router
@@ -58,6 +60,8 @@ async def app_exception_handler(_: Request, exc: AppException) -> JSONResponse:
 
 root_router = APIRouter(prefix="/api")
 root_router.include_router(auth_router)
+root_router.include_router(user_ai_settings_router)
+root_router.include_router(admin_ai_router)
 root_router.include_router(campaigns_router)
 root_router.include_router(channels_router)
 root_router.include_router(content_plans_router)

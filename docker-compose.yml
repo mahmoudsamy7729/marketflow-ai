@@ -19,7 +19,7 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
-    command: sh -c "uv run --no-sync alembic upgrade head && uv run --no-sync uvicorn main:app --host 0.0.0.0 --port 8000"
+    command: sh -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000"
     ports:
       - "8000:8000"
     depends_on:
@@ -31,7 +31,6 @@ services:
       <<: *app-environment
     volumes:
       - ./backend:/app
-      - backend_venv:/app/.venv
 
   db:
     image: pgvector/pgvector:pg16
@@ -66,7 +65,7 @@ services:
     build:
       context: ./backend
     restart: unless-stopped
-    command: sh -c "uv run --no-sync celery -A src.worker:celery_app worker --loglevel=info --concurrency=$${CELERY_WORKER_CONCURRENCY:-4} --prefetch-multiplier=$${CELERY_WORKER_PREFETCH_MULTIPLIER:-1} --max-tasks-per-child=$${CELERY_WORKER_MAX_TASKS_PER_CHILD:-200}"
+    command: sh -c "celery -A src.worker:celery_app worker --loglevel=info --concurrency=$${CELERY_WORKER_CONCURRENCY:-4} --prefetch-multiplier=$${CELERY_WORKER_PREFETCH_MULTIPLIER:-1} --max-tasks-per-child=$${CELERY_WORKER_MAX_TASKS_PER_CHILD:-200}"
     depends_on:
       - db
       - redis
@@ -76,13 +75,12 @@ services:
       <<: *app-environment
     volumes:
       - ./backend:/app
-      - backend_venv:/app/.venv
 
   celery_beat:
     build:
       context: ./backend
     restart: unless-stopped
-    command: sh -c "uv run --no-sync celery -A src.worker:celery_app beat --loglevel=info"
+    command: sh -c "celery -A src.worker:celery_app beat --loglevel=info"
     depends_on:
       - db
       - redis
@@ -92,9 +90,7 @@ services:
       <<: *app-environment
     volumes:
       - ./backend:/app
-      - backend_venv:/app/.venv
 
 volumes:
   pg_data:
-  backend_venv:
 

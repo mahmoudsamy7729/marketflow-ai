@@ -42,10 +42,12 @@ class AuthService:
             raise exceptions.UserAlreadyExists(payload.email)
 
         hashed_password = await hash_password(payload.password)
+        is_admin = not await self.repository.has_any_admin()
         user = await self.repository.create_user(
             email=payload.email,
             company_name=payload.company_name,
             hashed_password=hashed_password,
+            is_admin=is_admin,
         )
         return self._create_auth_session_response(response, user)
 

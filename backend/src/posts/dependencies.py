@@ -3,16 +3,15 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import Depends
-from openai import AsyncOpenAI
 
+from src.ai_settings.dependencies import user_ai_settings_service_dependency
 from src.channels.dependencies import get_channel_repository, get_facebook_provider
 from src.channels.providers import FacebookOAuthProvider
 from src.channels.repositories import ChannelRepository
-from src.config import settings
 from src.content_plans.dependencies import get_content_plan_repository
 from src.content_plans.repositories import ContentPlanRepository
 from src.database import db_dependency
-from src.posts import exceptions
+from src.dependencies import current_user_dependency
 from src.posts.publishers import FacebookPostPublisher, InstagramPostPublisher
 from src.posts.repositories import PostRepository
 from src.posts.services import PostGenerationService, PostService
@@ -20,15 +19,6 @@ from src.posts.services import PostGenerationService, PostService
 
 def get_post_repository(session: db_dependency) -> PostRepository:
     return PostRepository(session)
-
-
-def get_openai_client() -> AsyncOpenAI:
-    if not settings.ai_api_key or not settings.ai_model or not settings.ai_base_url:
-        raise exceptions.PostsGenerationConfigurationError()
-    return AsyncOpenAI(
-        api_key=settings.ai_api_key,
-        base_url=settings.ai_base_url,
-    )
 
 
 def get_post_service(
@@ -47,12 +37,19 @@ def get_post_service(
     )
 
 
-def get_post_generation_service(
+async def get_post_generation_service(
     post_repository: Annotated[PostRepository, Depends(get_post_repository)],
     content_plan_repository: Annotated[ContentPlanRepository, Depends(get_content_plan_repository)],
-    client: Annotated[AsyncOpenAI, Depends(get_openai_client)],
+    current_user: current_user_dependency,
+    ai_settings_service: user_ai_settings_service_dependency,
 ) -> PostGenerationService:
-    return PostGenerationService(post_repository, content_plan_repository, client, settings.ai_model)
+    resolved_config = await ai_settings_service.resolve_generation_config(current_user)
+    return PostGenerationService(
+        post_repository,
+        content_plan_repository,
+        resolved_config.client,
+        resolved_config.model,
+    )
 
 
 post_service_dependency = Annotated[PostService, Depends(get_post_service)]

@@ -89,10 +89,10 @@ async function refreshAccessToken(): Promise<void> {
         const data = await res.json();
         authToken = data.access_token;
         // Also update localStorage for persistence
-        const { setToken } = await import("./session");
+        const { setToken } = await import("@/features/auth/lib/session");
         setToken(data.access_token);
       } else {
-        const { clearToken } = await import("./session");
+        const { clearToken } = await import("@/features/auth/lib/session");
         clearToken();
         authToken = null;
         throw new HttpError(401, { code: "TOKEN_EXPIRED", message: "Session expired" });

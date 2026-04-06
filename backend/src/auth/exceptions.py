@@ -74,3 +74,12 @@ class UserDeleted(AppException):
             message="User is deleted.",
             status_code=410,
         )
+
+
+class AdminPrivilegesRequired(AppException):
+    def __init__(self) -> None:
+        super().__init__(
+            code="admin_privileges_required",
+            message="Admin privileges are required.",
+            status_code=403,
+        )

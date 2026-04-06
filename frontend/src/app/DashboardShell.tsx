@@ -12,6 +12,7 @@ interface DashboardShellNavItem {
 export const dashboardSidebarNavItems: DashboardShellNavItem[] = [
   { label: "Dashboard", to: "/dashboard" },
   { label: "Channels", to: "/channels" },
+  { label: "Settings", to: "/settings" },
   { label: "Overview", to: "/dashboard#overview" },
   { label: "Queue", to: "/dashboard#queue" },
   { label: "Activity", to: "/dashboard#activity" },
@@ -59,6 +60,10 @@ export function DashboardShell({
     await logout();
   }
 
+  const resolvedNavItems = user?.is_admin
+    ? [...navItems, { label: "AI Providers", to: "/admin/ai-providers" }]
+    : navItems;
+
   return (
     <main className={`dashboard-shell ${isSidebarOpen ? "is-sidebar-open" : ""}`}>
       <aside className={`dashboard-sidebar ${isSidebarOpen ? "is-open" : ""}`}>
@@ -93,7 +98,7 @@ export function DashboardShell({
             </div>
 
             <nav aria-label={navAriaLabel} className="dashboard-nav">
-              {navItems.map((item) =>
+              {resolvedNavItems.map((item) =>
                 item.to ? (
                   <Link key={`${item.label}-${item.to}`} onClick={() => setIsSidebarOpen(false)} to={item.to}>
                     {item.label}
